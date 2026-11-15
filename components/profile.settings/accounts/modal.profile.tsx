@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import MobileEditProfile from "./edit.profile/mobile.edit";
 import DesktopEditProfile from "./edit.profile/desktop.edit";
+import type { ProfileSaveStatus } from "@/lib/auth/profile-update";
 
 type AuthProvider = {
   name: string;
@@ -48,6 +49,7 @@ export default function ProfileModal({
   const [showAbout, setShowAbout] = useState(false);
   // const [showPreferences, setShowPreferences] = useState(false);
   const [localUserData, setLocalUserData] = useState(initialUserData);
+  const [profileNotice, setProfileNotice] = useState("");
 
   // Update local state when initialUserData changes
   useEffect(() => {
@@ -77,46 +79,11 @@ export default function ProfileModal({
   };
 
   // Handler for saving profile
-  const handleSaveProfile = async (updatedData: UserData) => {
-    try {
-      // Prepare the data for update, keeping existing profilePictureUrl if not changed
-      const dataToUpdate = {
-        ...updatedData,
-        profilePictureUrl:
-          updatedData.profilePictureUrl ?? localUserData.profilePictureUrl,
-      };
-
-      const response = await fetch("/api/user.information/update", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(dataToUpdate),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to update profile");
-      }
-
-      // Get the updated user data from the response
-      const updatedUserData = await response.json();
-
-      const enhancedUpdatedData = {
-        ...updatedUserData,
-        profilePictureUrl:
-          updatedUserData.profilePictureUrl || localUserData.profilePictureUrl,
-        authProviders: updatedUserData.authProviders || [],
-      };
-
-      // Update local state and close edit mode
-      setLocalUserData(enhancedUpdatedData);
-      setIsEditing(false);
-      if (onProfileUpdated) {
-        onProfileUpdated();
-      }
-    } catch (error) {
-      console.error("Error updating profile:", error);
-    }
+  const handleSaveProfile = (updatedData: UserData, status: ProfileSaveStatus = {}) => {
+    setLocalUserData({ ...updatedData, authProviders: updatedData.authProviders || localUserData.authProviders });
+    setProfileNotice(status.message || "Profile saved.");
+    if (!status.keepEditing) setIsEditing(false);
+    onProfileUpdated?.();
   };
 
   // Choose the content based on states and device type
@@ -217,6 +184,7 @@ export default function ProfileModal({
             {/* {showPreferences ? "Preferences" : "Edit Profile"} */}
           </VisuallyHidden>
         </DialogTitle>
+        {profileNotice && !isEditing && <p role="status" className="rounded bg-blue-900 p-3 text-sm text-blue-100">{profileNotice}</p>}
         {modalContent}
       </DialogContent>
     </Dialog>

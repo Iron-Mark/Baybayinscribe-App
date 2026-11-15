@@ -1,7 +1,8 @@
 "use client";
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Heart, Hourglass } from "lucide-react";
 import { useQuizTakeContext } from "@/app/(screens)/quiz/take/[quiz_id]/QuizTakeContext";
+import { startQuestionTimer } from "@/lib/quiz/question-timer";
 
 interface QuizPlayerStatisticsProps {
   duration?: number;
@@ -12,70 +13,27 @@ interface QuizPlayerStatisticsProps {
 const QuizPlayerStatistics = ({
   duration = 30,
   onTimerEnd = () => {},
+  stopTimer = false,
 }: QuizPlayerStatisticsProps) => {
   const quizTakeContext = useQuizTakeContext();
-  const [initialHealth, setInitialHealth] = useState<number | undefined>(
-    undefined
-  );
+  const [initialHealth] = useState(quizTakeContext.health);
   const [timeRemaining, setTimeRemaining] = useState<number>(duration);
-  const timerEndedRef = useRef(false);
-
-  const resetTimer = () => {
-    timerEndedRef.current = false;
-    setTimeRemaining(duration);
-  };
+  const onTimerEndRef = useRef(onTimerEnd);
+  const questionId = quizTakeContext.currentQuestion?.id;
+  const outOfHealth = quizTakeContext.health === 0;
 
   useEffect(() => {
-    resetTimer();
-  }, [quizTakeContext.currentQuestion]);
-
-  useEffect(() => {
-    setInitialHealth(quizTakeContext.health);
-  }, []);
-
-  useEffect(() => {
-    setTimeRemaining(duration);
-  }, [duration]);
-
-  const memoizedOnTimerEnd = useCallback(() => {
-    onTimerEnd();
+    onTimerEndRef.current = onTimerEnd;
   }, [onTimerEnd]);
 
   useEffect(() => {
-    if (quizTakeContext.health === 0) {
+    if (outOfHealth) {
       setTimeRemaining(0);
       return;
     }
-    if (timeRemaining <= 0) {
-      memoizedOnTimerEnd();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (quizTakeContext.health === 0) {
-      setTimeRemaining(0);
-      return;
-    }
-    let timer: NodeJS.Timeout;
-    if (timeRemaining > 0) {
-      timer = setInterval(() => {
-        setTimeRemaining((prevTime) => {
-          if (prevTime <= 1) {
-            if (!timerEndedRef.current) {
-              timerEndedRef.current = true;
-              memoizedOnTimerEnd();
-            }
-            clearInterval(timer);
-            return 0;
-          }
-          return prevTime - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [timeRemaining, memoizedOnTimerEnd, quizTakeContext.health]);
+    if (stopTimer || !questionId) return;
+    return startQuestionTimer(duration, setTimeRemaining, () => onTimerEndRef.current());
+  }, [questionId, duration, outOfHealth, stopTimer]);
 
   return (
     <>

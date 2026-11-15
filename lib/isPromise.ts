@@ -1,7 +1,8 @@
-export function isPromise<T = any>(value: unknown): value is Promise<T> {
+export function isPromise<T = unknown>(value: unknown): value is PromiseLike<T> {
   return (
     !!value &&
     (typeof value === 'object' || typeof value === 'function') &&
-    typeof (value as any).then === 'function'
+    'then' in value &&
+    typeof value.then === 'function'
   );
 }

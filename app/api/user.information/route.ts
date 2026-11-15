@@ -1,9 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "../../lib/auth";
+import { requireApiAccess } from "@/lib/auth/api-access";
 import { Pool } from "pg";
-import { mockUsers } from "@/constants/mock/mockUsers";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -15,18 +14,11 @@ const pool = new Pool({
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: req.headers,
-    });
-
-    const userId = session?.user?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireApiAccess(req);
+    if (access.response) return access.response;
+    const userId = access.session.user.id;
 
     const body = await req.json();
-    console.log("Received user information POST body:", body);
     const {
       username,
       firstName,
@@ -94,14 +86,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     } catch (dbError) {
       console.error("Database error:", dbError);
-      // Fallback: simulate success for mock admin
-      if (
-        body.email === "admin@baybayinscribe.top" ||
-        body.username === "admin"
-      ) {
-        console.log("Using mock fallback for admin POST user information");
-        return NextResponse.json({ success: true, mock: true });
-      }
       return NextResponse.json(
         { error: "Database operation failed" },
         { status: 500 }
@@ -115,15 +99,9 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: req.headers,
-    });
-
-    const userId = session?.user?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireApiAccess(req);
+    if (access.response) return access.response;
+    const userId = access.session.user.id;
 
     const body = await req.json();
     const { wantsNotifications, agreedToTerms } = body;
@@ -159,14 +137,6 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: true });
     } catch (dbError) {
       console.error("Database error:", dbError);
-      // Fallback: simulate success for mock admin
-      if (
-        body.email === "admin@baybayinscribe.top" ||
-        body.username === "admin"
-      ) {
-        console.log("Using mock fallback for admin PATCH user information");
-        return NextResponse.json({ success: true, mock: true });
-      }
       return NextResponse.json(
         { error: "Database operation failed" },
         { status: 500 }
@@ -180,15 +150,9 @@ export async function PATCH(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: req.headers,
-    });
-
-    const userId = session?.user?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireApiAccess(req);
+    if (access.response) return access.response;
+    const userId = access.session.user.id;
 
     try {
       const result = await pool.query(
@@ -216,22 +180,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(result.rows[0]);
     } catch (dbError) {
       console.error("Database error:", dbError);
-      // Fallback: return mock admin user
-      const mockUser = mockUsers.find(
-        (u) => u.email === "admin@baybayinscribe.top"
-      );
-      if (mockUser) {
-        console.log("Using mock fallback for admin GET user information");
-        return NextResponse.json({
-          username: mockUser.username,
-          firstName: mockUser.firstName,
-          lastName: mockUser.lastName,
-          contactNumber: mockUser.contactNumber,
-          dateOfBirth: mockUser.dateOfBirth,
-          profilePictureUrl: mockUser.profilePictureUrl,
-          email: mockUser.email,
-        });
-      }
       return NextResponse.json(
         { error: "Database operation failed" },
         { status: 500 }

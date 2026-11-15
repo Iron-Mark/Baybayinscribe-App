@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "../../../lib/auth";
+import { requireApiAccess } from "@/lib/auth/api-access";
 import { Pool } from "pg";
 
 const pool = new Pool({
@@ -8,15 +8,9 @@ const pool = new Pool({
 
 export async function PUT(req: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: req.headers
-    });
-
-    const userId = session?.user?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireApiAccess(req);
+    if (access.response) return access.response;
+    const userId = access.session.user.id;
 
     const body = await req.json();
     const {
@@ -29,12 +23,16 @@ export async function PUT(req: NextRequest) {
       profilePictureUrl
     } = body;
 
+    if (email !== undefined &&
+        (typeof email !== "string" || email.trim().toLowerCase() !== access.session.user.email.toLowerCase())) {
+      return NextResponse.json({ error: "Email changes require confirmation through the email-change flow." }, { status: 409 });
+    }
+
     if (
       !username || username.length > 30 ||
       !firstName || firstName.length > 30 ||
       !lastName || lastName.length > 30 ||
-      (contactNumber && !/^\d{11}$/.test(contactNumber)) ||
-      !email
+      (contactNumber && !/^\d{11}$/.test(contactNumber))
     ) {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 });
     }
@@ -62,15 +60,6 @@ export async function PUT(req: NextRequest) {
              updated_at = NOW() 
          WHERE user_id = $7`,
         [username, firstName, lastName, contactNumber, dateOfBirth, profilePictureUrl, userId]
-      );
-
-      // Update email in user table
-      await pool.query(
-        `UPDATE "user" 
-         SET email = $1, 
-             updated_at = NOW() 
-         WHERE id = $2`,
-        [email, userId]
       );
 
       return NextResponse.json({ success: true });

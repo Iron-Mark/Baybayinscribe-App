@@ -2,6 +2,15 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Quiz, QuizDifficulty } from "../types/type.quiz";
+import { headers } from "next/headers";
+import { auth } from "@/app/lib/auth";
+
+async function requireAIActor(adminOnly = false) {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user || session.user.banned || (adminOnly && session.user.role !== 'admin')) {
+    throw new Error(adminOnly ? 'Administrator access required' : 'Sign in to use live AI chat');
+  }
+}
 
 const prompt = `
 
@@ -171,6 +180,7 @@ export const generateQuiz = async (
   quiz_name?: string,
   quiz_description?: string
 ) => {
+  await requireAIActor(true);
   try {
     let _newPrompt = prompt;
     _newPrompt = _newPrompt.replace("{x}", question_count.toString());
@@ -201,6 +211,7 @@ export const generateQuiz = async (
 
 // New helper to prompt Gemini directly under that constraint
 export const promptGemini = async (userQuery: string): Promise<string> => {
+  await requireAIActor();
   try {
     const fullPrompt = baybayinInstruction.replace("{query}", userQuery);
     const response = await getModel().generateContent([fullPrompt]);

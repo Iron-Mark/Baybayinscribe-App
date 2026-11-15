@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "../../../lib/auth";
+import { requireApiAccess } from "@/lib/auth/api-access";
 import { Pool } from "pg";
 
 const pool = new Pool({
@@ -8,15 +8,9 @@ const pool = new Pool({
 
 export async function DELETE(req: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: req.headers
-    });
-
-    const userId = session?.user?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireApiAccess(req);
+    if (access.response) return access.response;
+    const userId = access.session.user.id;
 
     try {
       // Begin transaction

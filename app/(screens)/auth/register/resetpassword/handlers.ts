@@ -61,7 +61,7 @@ export const createResetPasswordHandlers = ({
     // Validate the form data
     const validationResult = requestResetSchema.safeParse(values);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors;
+      const errors = validationResult.error.issues;
       const firstError = errors[0];
       setValidationError(firstError.message);
       setIsLoading(false);
@@ -69,9 +69,10 @@ export const createResetPasswordHandlers = ({
     }
 
     try {
-      await authClient.forgetPassword(
+      await authClient.requestPasswordReset(
         {
           email: values.email,
+          redirectTo: "/auth/register/resetpassword",
         },
         {
           onSuccess: () => {
@@ -90,7 +91,6 @@ export const createResetPasswordHandlers = ({
             setError(errorMessage);
             setIsLoading(false);
           },
-          redirectTo: "/auth/register/resetpassword",
         }
       );
     } catch {
@@ -113,7 +113,7 @@ export const createResetPasswordHandlers = ({
     // Validate the form data
     const validationResult = resetPasswordSchema.safeParse(values);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors;
+      const errors = validationResult.error.issues;
       const firstError = errors[0];
       setValidationError(firstError.message);
       setIsLoading(false);

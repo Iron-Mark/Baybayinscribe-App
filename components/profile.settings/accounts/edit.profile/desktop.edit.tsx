@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { X, Eye, EyeClosed } from "lucide-react";
 import {
@@ -9,6 +9,7 @@ import {
   PasswordStrength,
 } from "@/lib/auth/passwordValidation";
 import { authClient } from "../../../../app/lib/auth-client";
+import { saveProfileChanges, ProfileEmailChangeError, type ProfileSaveStatus } from "@/lib/auth/profile-update";
 
 type UserData = {
   firstName: string;
@@ -28,7 +29,7 @@ type FormDataWithFile = Omit<UserData, "profilePictureUrl"> & {
 type EditProfileDesktopProps = {
   onClose: () => void;
   userData: UserData;
-  onSave: (updatedData: UserData) => void;
+  onSave: (updatedData: UserData, status?: ProfileSaveStatus) => void | Promise<void>;
 };
 
 export default function DesktopEditProfile({
@@ -51,6 +52,9 @@ export default function DesktopEditProfile({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
+  const retryEmailRef = useRef<string | null>(null);
 
   // Get strength color
   const getStrengthColor = (strength: PasswordStrength | null) => {
@@ -68,7 +72,9 @@ export default function DesktopEditProfile({
 
   // Update internal state when userData prop changes
   useEffect(() => {
-    setFormData(userData as FormDataWithFile);
+    const retryEmail = retryEmailRef.current;
+    if (retryEmail?.trim().toLowerCase() === userData.email.trim().toLowerCase()) retryEmailRef.current = null;
+    setFormData({ ...userData, email: retryEmailRef.current ?? userData.email });
     setProfileImage(
       userData.profilePictureUrl || "/images/user.profile/user.avatar.webp"
     );
@@ -76,6 +82,7 @@ export default function DesktopEditProfile({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
+    if (name === "email" && retryEmailRef.current !== null) retryEmailRef.current = value;
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -295,7 +302,7 @@ export default function DesktopEditProfile({
       const passwordSchema = createPasswordSchema();
       const passwordResult = passwordSchema.safeParse(password);
       if (!passwordResult.success) {
-        newErrors.password = passwordResult.error.errors[0].message;
+        newErrors.password = passwordResult.error.issues[0].message;
       }
       if (!confirmPassword) {
         newErrors.confirmPassword = "Please confirm your new password";
@@ -310,7 +317,10 @@ export default function DesktopEditProfile({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingRef.current) return;
     if (validateForm()) {
+      savingRef.current = true;
+      setIsSaving(true);
       try {
         let finalProfilePictureUrl = formData.profilePictureUrl;
 
@@ -386,32 +396,14 @@ export default function DesktopEditProfile({
           setConfirmPassword("");
         }
 
-        // Update other user information (excluding password fields)
-        const response = await fetch("/api/user.information/update", {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(dataToUpdate),
-        });
-
-        const responseData = await response.json();
-
-        if (!response.ok) {
-          const error =
-            responseData.error ||
-            (await response.text()) ||
-            "Failed to update profile";
-          setErrors((prev) => ({
-            ...prev,
-            submit: error,
-          }));
-          return;
-        }
-
-        // Pass the updated data to the onSave callback
-        onSave(dataToUpdate);
+        const saved = await saveProfileChanges(userData.email, dataToUpdate);
+        retryEmailRef.current = null;
+        await onSave(saved.profile, { message: saved.message });
       } catch (error) {
+        if (error instanceof ProfileEmailChangeError) {
+          retryEmailRef.current = formData.email;
+          await onSave(error.profile, { keepEditing: true, message: error.message });
+        }
         console.error("Error updating profile:", error);
         setErrors((prev) => ({
           ...prev,
@@ -420,6 +412,9 @@ export default function DesktopEditProfile({
               ? error.message
               : "An error occurred while saving changes",
         }));
+      } finally {
+        savingRef.current = false;
+        setIsSaving(false);
       }
     }
   };
@@ -792,7 +787,7 @@ export default function DesktopEditProfile({
                     Email
                   </label>
                   <p className="text-xs text-gray-500 mt-1 mb-1">
-                    Update your email address.
+                      Email changes require mailbox confirmation. Your current address stays active until verification completes.
                   </p>
                 </div>
                 <input
@@ -834,7 +829,7 @@ export default function DesktopEditProfile({
               Feel free to change your information here!
             </p>
             {errors.submit && (
-              <p className="text-red-500 text-sm mb-4">{errors.submit}</p>
+              <p role="alert" className="text-red-500 text-sm mb-4">{errors.submit}</p>
             )}
 
             {/* Action Buttons */}
@@ -869,6 +864,7 @@ export default function DesktopEditProfile({
               </button>
               <button
                 type="submit"
+                disabled={isSaving}
                 className="flex items-center px-5 py-2 bg-blue-600 cursor-pointer hover:bg-blue-700 text-white rounded-md"
               >
                 <svg
@@ -899,7 +895,7 @@ export default function DesktopEditProfile({
                     strokeLinejoin="round"
                   />
                 </svg>
-                Save Changes
+                {isSaving ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </form>

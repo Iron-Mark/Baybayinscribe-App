@@ -59,7 +59,7 @@ export const SketchInputs = forwardRef(
         onOptionsUpdate?.(options);
         onChange?.({ description, options });
       }
-    }, [options, description]);
+    }, [options, description, onOptionsUpdate, onChange]);
 
     const addOption = () => {
       setOptions([...options, ""]);
@@ -73,7 +73,7 @@ export const SketchInputs = forwardRef(
     const handleSubmit = () => {
       const result = validationSchema.safeParse({ description, options });
       if (!result.success) {
-        result.error.errors.forEach((error) => alert(error.message));
+        result.error.issues.forEach((error) => alert(error.message));
         return;
       }
       onSubmit?.({ options, description });

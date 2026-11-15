@@ -10,14 +10,11 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    ignores: [
-      "./app/(screens)/admin/quiz/[quiz_id]/edit/page.tsx"
-    ],
-    
+    // Flat config does not automatically exclude Next.js build output.
+    ignores: [".next/**", "out/**", "build/**", "coverage/**", "next-env.d.ts"],
   },
-  
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
 ];
 
 export default eslintConfig;

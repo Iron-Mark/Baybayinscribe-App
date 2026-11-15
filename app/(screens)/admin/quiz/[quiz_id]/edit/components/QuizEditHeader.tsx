@@ -82,7 +82,7 @@ export const QuizFormHeader = ({
     timer: false,
     difficulty: false,
   });
-  const { quizInformation, setQuizInformation } = useQuizContext();
+  const { setQuizInformation } = useQuizContext();
 
   useEffect(() => {
     if (existingData) {
@@ -104,8 +104,9 @@ export const QuizFormHeader = ({
     });
     if (!result.success) {
       const newErrors: { [key: string]: string } = {};
-      result.error.errors.forEach((err) => {
-        newErrors[err.path[0]] = err.message;
+      result.error.issues.forEach((err) => {
+        const field = err.path[0];
+        if (typeof field === "string") newErrors[field] = err.message;
       });
       setErrors(newErrors);
     } else {
@@ -115,17 +116,21 @@ export const QuizFormHeader = ({
   };
 
   useEffect(() => {
-    if (!quizInformation) return;
-    setQuizInformation({
-      quiz_name: title,
-      category: quizTopic,
-      description,
-      time_limit: parseInt(timer) || 0,
-      difficulty,
-      quiz_id: quizInformation.quiz_id,
-      created_at: quizInformation.created_at,
-      updated_at: quizInformation.updated_at,
-      is_public: quizInformation.is_public,
+    setQuizInformation((previous) => {
+      const timeLimit = parseInt(timer) || 0;
+      if (
+        previous.quiz_name === title && previous.category === quizTopic &&
+        previous.description === description && previous.time_limit === timeLimit &&
+        previous.difficulty === difficulty
+      ) return previous;
+      return {
+        ...previous,
+        quiz_name: title,
+        category: quizTopic,
+        description,
+        time_limit: timeLimit,
+        difficulty,
+      };
     });
   }, [
     title,
@@ -133,9 +138,7 @@ export const QuizFormHeader = ({
     description,
     timer,
     difficulty,
-    quizInformation?.quiz_id,
-    quizInformation?.created_at,
-    quizInformation?.updated_at,
+    setQuizInformation,
   ]);
 
   // Call onChange whenever any field changes
@@ -149,8 +152,7 @@ export const QuizFormHeader = ({
         difficulty,
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, quizTopic, description, timer, difficulty]);
+  }, [title, quizTopic, description, timer, difficulty, onChange]);
 
   return (
     <QuizFormCard>

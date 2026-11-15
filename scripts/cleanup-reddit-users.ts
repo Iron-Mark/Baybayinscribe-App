@@ -75,7 +75,7 @@ async function cleanupRedditUsers() {
       }
     });
 
-    const duplicateEmails = Object.entries(emailCounts).filter(([email, users]) => users.length > 1);
+    const duplicateEmails = Object.entries(emailCounts).filter(([, users]) => users.length > 1);
 
     if (duplicateEmails.length > 0) {
       console.log(`🔄 Found duplicate emails affecting ${duplicateEmails.length} email addresses`);

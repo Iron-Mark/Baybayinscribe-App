@@ -1,6 +1,7 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { isGuestPage } from "@/lib/auth/guest-routes";
 
 export async function middleware(request: NextRequest) {
   console.log('Middleware triggered for path:', request.nextUrl.pathname);
@@ -9,6 +10,8 @@ export async function middleware(request: NextRequest) {
 
   if (
     pathname.startsWith("/images/") ||
+    pathname.startsWith("/models/") ||
+    pathname.startsWith("/showcase/") ||
     pathname.includes(".png") ||
     pathname.includes(".jpg") ||
     pathname.includes(".webp") ||
@@ -28,7 +31,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Public showcase pages do not require a cookie or completed registration.
+  // Their data APIs independently filter public content and protect all writes.
   const sessionCookie = getSessionCookie(request);
+  if (!sessionCookie && isGuestPage(pathname)) return NextResponse.next();
   console.log('Middleware - Session cookie found:', !!sessionCookie);
   const isAuthPage = pathname.startsWith("/auth");
   const isAdminPage = pathname.startsWith("/admin");

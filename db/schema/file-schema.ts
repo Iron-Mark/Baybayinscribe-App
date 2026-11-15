@@ -1,6 +1,6 @@
 import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { learningResource } from "./learning-resources";
-import { user, userInformation } from "./auth-schema";
+import { user } from "./auth-schema";
 
 export const file = pgTable("file", {
   id: uuid("id").primaryKey(),

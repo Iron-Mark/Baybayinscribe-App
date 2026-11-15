@@ -1,5 +1,3 @@
-"use server";
-
 import db from "@/db/drizzle";
 import {
   learningResource,
@@ -10,25 +8,46 @@ import { file as FileSchema } from "@/db/schema/file-schema";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { user } from "@/db/schema/auth-schema";
+import { requireApiAccess } from "@/lib/auth/api-access";
 
 export async function POST(
   request: Request,
-  { params }: { params: { resource_id: string } }
+  { params }: { params: Promise<{ resource_id: string }> }
 ) {
-  const resource_id = params.resource_id;
+  const access = await requireApiAccess(request);
+  if (access.response) return access.response;
+  const { resource_id } = await params;
 
   if (!resource_id) {
     return new Response("Resource ID is required", { status: 400 });
   }
 
   const body = await request.json();
-  const userId = body.userId;
+  const userId = body.userId || access.session.user.id;
+  if (userId !== access.session.user.id && access.session.user.role !== "admin") {
+    return NextResponse.json({ error: "Cannot read another user's progress" }, { status: 403 });
+  }
+
+  return readLesson(resource_id, userId, access.session.user.role);
+}
+
+/** Public content read; progress can only belong to the verified current actor. */
+export async function GET(request: Request, { params }: { params: Promise<{ resource_id: string }> }) {
+  const access = await requireApiAccess(request, { allowGuest: true });
+  if (access.response) return access.response;
+  const { resource_id } = await params;
+  return readLesson(resource_id, access.session?.user.id, access.session?.user.role);
+}
+
+async function readLesson(resource_id: string, userId?: string, role?: string | null) {
 
   // Query the lesson with the joined modules and their files.
   const rows = await db
     .select()
     .from(learningResource)
-    .where(eq(learningResource.id, resource_id))
+    .where(role === "admin"
+      ? eq(learningResource.id, resource_id)
+      : and(eq(learningResource.id, resource_id), eq(learningResource.is_visible, true)))
     .leftJoin(
       learningResourceModule,
       eq(learningResource.id, learningResourceModule.learning_resource_id)
@@ -42,12 +61,10 @@ export async function POST(
   // Get the lesson and user info from the first row
   const lessonRow = rows[0].learning_resource;
   const userInfo = await db
-    .select()
+    .select({ id: user.id, name: user.name })
     .from(user)
     .where(eq(user.id, lessonRow.created_by))
     .then((u) => u[0] || null);
-
-  (lessonRow.created_by as unknown) = userInfo;
 
   // Build modules array (resolve files, etc.)
   const modules = await Promise.all(
@@ -79,7 +96,7 @@ export async function POST(
   );
 
   const lesson = {
-    learning_resource: lessonRow,
+    learning_resource: { ...lessonRow, created_by: userInfo },
     learning_resource_module: modules,
   };
 

@@ -21,7 +21,7 @@ import { parseSentence } from "@/lib/parse_baybayin";
 export type SketchpadProps = {
   question?: string;
   characters?: string;
-  inference?: ReturnType<typeof useInferenceStore>;
+  inference?: InferenceState;
   onDrawingSubmit?: (result: string, isCorrect: boolean) => void;
 } & HTMLAttributes<HTMLDivElement>;
 
@@ -58,76 +58,66 @@ const SketchpadCanvas = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [history, setHistory] = useState<ImageData[]>([]);
-  const [_, setIsErasing] = useState(false);
   const [baybayinText, setBaybayinText] = useState<string | null>(null);
-  const submissionHandledRef = useRef(false);
   const [hasProcessedResult, setHasProcessedResult] = useState(false);
-
-  // Remove model initialization - it's now handled in context
-  // Just ensure cleanup on unmount
-  useEffect(() => {
-    return () => {
-      const inference = props.inference as InferenceState;
-      if (inference.status !== InferenceStatus.IDLE) {
-        // Don't cleanup here since other components might be using it
-        // inference.cleanup();
-      }
-    };
+  const inference = props.inference;
+  const { characters, onDrawingSubmit } = props;
+  const clearResults = inference?.clearResults;
+  const localInferenceResult = inference?.localInferenceResult;
+  const subscribeToSubmit = quizContext.subscribeToSubmit;
+  const handleClear = useCallback(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (canvas && context) {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      setHistory([]);
+      setBaybayinText(null);
+    }
   }, []);
-
-  // Reset canvas on render
-  useEffect(() => {
-    handleClear();
-    submissionHandledRef.current = false;
-  }, [props.characters]); // Reset when question changes
+  const handleSubmit = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !inference || inference.status !== InferenceStatus.READY || inference.isInferring) return;
+    inference.inferLocal(undefined, canvas, false, true);
+  }, [inference]);
 
   // Subscribe to submit when model is ready
   useEffect(() => {
-    const inference = props.inference as InferenceState;
-    if (inference.status === InferenceStatus.READY && !submissionHandledRef.current) {
-      quizContext.subscribeToSubmit(handleSubmit);
-      submissionHandledRef.current = true;
-    }
-  }, [(props.inference as InferenceState).status]);
+    return subscribeToSubmit(handleSubmit);
+  }, [subscribeToSubmit, handleSubmit]);
 
   // Handle inference results with automatic failure
   useEffect(() => {
-    const inference = props.inference as InferenceState;
-    if (inference?.localInferenceResult && !hasProcessedResult) {
-      const result = inference.localInferenceResult;
+    if (localInferenceResult && !hasProcessedResult) {
+      const result = localInferenceResult;
       
       if (result.length > 0) {
         const builtString = result.map((item) => item.className).join("");
         setBaybayinText(builtString);
-        const isCorrect = builtString === props.characters;
+        const isCorrect = builtString === characters;
         
         // Call the drawing submit callback
-        props.onDrawingSubmit?.(builtString, isCorrect);
+        onDrawingSubmit?.(builtString, isCorrect);
         
         // Mark as processed to prevent multiple calls
         setHasProcessedResult(true);
       } else {
         // No detection - automatically fail
         setBaybayinText(null);
-        props.onDrawingSubmit?.("No detection", false);
+        onDrawingSubmit?.("No detection", false);
         setHasProcessedResult(true);
       }
     }
-  }, [(props.inference as InferenceState).localInferenceResult, hasProcessedResult]);
+  }, [localInferenceResult, hasProcessedResult, characters, onDrawingSubmit]);
 
   // Reset processed flag when question changes
   useEffect(() => {
     handleClear();
-    submissionHandledRef.current = false;
     setHasProcessedResult(false);
     setBaybayinText(null);
     
     // Clear any existing inference results for this component
-    const inference = props.inference as InferenceState;
-    if (inference.localInferenceResult) {
-      inference.clearResults();
-    }
-  }, [props.characters]);
+    clearResults?.();
+  }, [characters, handleClear, clearResults]);
 
   // Canvas setup and event handlers
   useEffect(() => {
@@ -202,29 +192,6 @@ const SketchpadCanvas = () => {
     };
   }, [isDrawing]);
 
-  const handleSubmit = useCallback(() => {
-    const canvas = canvasRef.current;
-    const inference = props.inference as InferenceState;
-
-    if (!canvas || !inference) {
-      console.error("Canvas or inference not available");
-      return;
-    }
-
-    if (inference.status !== InferenceStatus.READY) {
-      console.error("Inference not ready, status:", inference.status);
-      return;
-    }
-
-    if (inference.isInferring) {
-      console.log("Inference already in progress");
-      return;
-    }
-
-    console.log("Starting inference...");
-    inference.inferLocal(undefined, canvas, false, true);
-  }, [props.inference]);
-
   const handleUndo = () => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
@@ -235,21 +202,10 @@ const SketchpadCanvas = () => {
     }
   };
 
-  const handleClear = () => {
-    const canvas = canvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (canvas && context) {
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      setHistory([]);
-      setBaybayinText(null);
-    }
-  };
-
   const handleDraw = () => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (context) {
-      setIsErasing(false);
       context.globalCompositeOperation = "source-over";
       context.strokeStyle = "#000000";
     }
@@ -291,7 +247,7 @@ const SketchpadCanvas = () => {
       if (baybayinText && !isVisible) {
         setIsVisible(true);
       }
-    }, [baybayinText]);
+    }, [baybayinText, isVisible]);
 
     return baybayinText ? (
       <div

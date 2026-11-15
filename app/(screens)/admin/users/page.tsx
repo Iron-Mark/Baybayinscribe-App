@@ -8,8 +8,6 @@ import { TablePagination } from "./components/TablePagination";
 import { useState, useMemo, useEffect } from "react";
 import { authClient } from "../../../lib/auth-client";
 import { toast } from "sonner";
-import { mockUsers } from "@/constants/mock/mockUsers";
-import { useLearningResourceStore } from "@/app/store/store.lr";
 
 interface User {
   id: string;
@@ -64,51 +62,12 @@ export default function UserManagement() {
           },
         });
 
-        // Handle different response formats
-        let userList;
-        if (
-          userListResponse &&
-          "data" in userListResponse &&
-          userListResponse.data
-        ) {
-          userList = userListResponse.data.users;
-        } else if (Array.isArray(userListResponse)) {
-          userList = userListResponse;
-        } else if (userListResponse && typeof userListResponse === "object") {
-          // Try to find users array in the response object
-          userList = Object.values(userListResponse).find((val) =>
-            Array.isArray(val)
+        if (userListResponse.error || !userListResponse.data) {
+          throw new Error(
+            userListResponse.error?.message || "Failed to load the user list"
           );
         }
-
-        if (!userList || !Array.isArray(userList)) {
-          // Fallback to mock data if backend response is invalid
-          console.log(
-            "Falling back to mock data due to invalid backend response"
-          );
-          const mockUserList = mockUsers.data.users;
-          const usersWithInfo = mockUserList.map((user) => ({
-            id: user.id,
-            email: user.email,
-            role: user.role || "user",
-            banned: user.banned || false,
-            banReason: user.banReason,
-            banExpires: user.banExpires ? new Date(user.banExpires) : null,
-            userInformation: user.userInformation
-              ? {
-                  ...user.userInformation,
-                  profilePictureUrl:
-                    user.userInformation.profilePictureUrl || undefined,
-                }
-              : undefined,
-            createdAt: user.createdAt,
-            updatedAt: user.updatedAt,
-          })) as User[];
-          setUsers(usersWithInfo);
-          setLastSynced(new Date());
-          setLoading(false);
-          return;
-        }
+        const userList = userListResponse.data.users;
 
         // Fetch user information for each user concurrently
         const usersWithInfoPromises = userList.map(async (user) => {

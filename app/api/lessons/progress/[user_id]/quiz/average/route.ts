@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import db from "@/db/drizzle";
 import { quiz_answer_question } from "@/db/schema/quiz-schema";
 import { eq, sql } from "drizzle-orm";
+import { requireApiAccess } from "@/lib/auth/api-access";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { user_id: string } }
+  { params }: { params: Promise<{ user_id: string }> }
 ) {
   try {
-    const { user_id } = params;
+    const { user_id } = await params;
+    const access = await requireApiAccess(request, { userId: user_id });
+    if (access.response) return access.response;
 
     if (!user_id) {
       return NextResponse.json(

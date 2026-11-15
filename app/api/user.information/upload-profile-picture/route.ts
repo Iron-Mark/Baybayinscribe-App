@@ -1,5 +1,5 @@
 import { put } from '@vercel/blob';
-import { auth } from '@/app/lib/auth';
+import { requireApiAccess } from '@/lib/auth/api-access';
 import db from '@/db/drizzle';
 import { userInformation } from '@/db/schema/auth-schema';
 import { eq } from 'drizzle-orm';
@@ -7,19 +7,14 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: req.headers
-    });
-
-    const userId = session?.user?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireApiAccess(req);
+    if (access.response) return access.response;
+    const userId = access.session.user.id;
 
     const formData = await req.formData();
-    const file = formData.get('file') as File | null;
+    const file = formData.get('file');
     
-    if (!file) {
+    if (!(file instanceof File)) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
@@ -34,7 +29,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Upload to blob storage
-    const blob = await put(`profile-pictures/${userId}/${file.name}`, file, {
+    const extension = file.type === 'image/png' ? 'png' : 'jpg';
+    const blob = await put(`profile-pictures/${userId}/${crypto.randomUUID()}.${extension}`, file, {
       access: 'public',
     });    // Update user profile picture URL in database
     await db.update(userInformation)

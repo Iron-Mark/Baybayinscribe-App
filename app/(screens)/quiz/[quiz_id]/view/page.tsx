@@ -6,6 +6,7 @@ import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft } from "lucide-react";
 import { authClient } from "@/app/lib/auth-client";
+import { isSampleContent } from '@/lib/showcase-content';
 
 export default function QuizPage() {
   const [mounted, setMounted] = useState(false);
@@ -16,6 +17,8 @@ export default function QuizPage() {
   const quizId = params.quiz_id as string;
 
   const quizStore = useQuizStore();
+  const loadQuizDetails = useQuizStore((state) => state.loadQuizDetails);
+  const loadQuizAnswerHistory = useQuizStore((state) => state.loadQuizAnswerHistory);
 
   useEffect(() => {
     (async () => {
@@ -28,11 +31,12 @@ export default function QuizPage() {
   }, []);
 
   useEffect(() => {
-    if (sessionLoading || userId === null) return;
+    if (sessionLoading) return;
     setMounted(true);
-    quizStore.loadQuizDetails(quizId);
-    quizStore.loadQuizAnswerHistory(quizId, userId);
-  }, [quizId, userId, sessionLoading]);
+    loadQuizDetails(quizId);
+    if (userId) loadQuizAnswerHistory(quizId, userId);
+    else useQuizStore.setState({ answerHistory: undefined });
+  }, [quizId, userId, sessionLoading, loadQuizDetails, loadQuizAnswerHistory]);
 
   if (sessionLoading || !mounted) return null;
 
@@ -86,7 +90,7 @@ export default function QuizPage() {
           {/* Meta Section */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-2 text-gray-500 text-sm mb-2">
             <div>
-              <span className="font-medium text-gray-700">By:</span> Butty AI
+              <span className="font-medium text-gray-700">By:</span> {isSampleContent(quizId) ? 'Bundled sample' : 'Butty AI'}
             </div>
             <div>
               <span className="font-medium text-gray-700">Created:</span>{" "}

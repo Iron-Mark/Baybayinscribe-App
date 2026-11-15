@@ -55,7 +55,7 @@ const ModuleDialog = ({
     if (isOpen) {
       form.reset(defaultValues);
     }
-  }, [isOpen, defaultValues]);
+  }, [isOpen, defaultValues, form]);
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>

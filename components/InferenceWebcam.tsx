@@ -47,8 +47,6 @@ const InferenceWebcam = forwardRef<InferenceWebcamHandle, InferenceWebcamProps>(
     const secondFileInputRef = useRef<HTMLInputElement>(null);
     const currentStream = useRef<MediaStream | null>(null);
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const [usingLocal, setUsingLocal] = useState(true);
     const [facingMode, setFacingMode] = useState("environment");
     const [cameraDevice, setCameraDeviceState] = useState<string | null>(null);
     const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -60,16 +58,12 @@ const InferenceWebcam = forwardRef<InferenceWebcamHandle, InferenceWebcamProps>(
         }
         setFacingMode(mode);
         setCameraDeviceState(null);
-        if (inference.status === InferenceStatus.READY && !imageOnly)
-          startWebcam();
       },
       setCameraDevice: (deviceId: string) => {
         if (currentStream.current) {
           currentStream.current.getTracks().forEach((track) => track.stop());
         }
         setCameraDeviceState(deviceId);
-        if (inference.status === InferenceStatus.READY && !imageOnly)
-          startWebcam();
       },
       killWebcam: () => {
         if (currentStream.current) {
@@ -78,22 +72,13 @@ const InferenceWebcam = forwardRef<InferenceWebcamHandle, InferenceWebcamProps>(
       },
     }));
 
-    useEffect(() => {
-      if (imageOnly) {
-        if (currentStream.current) {
-          currentStream.current.getTracks().forEach((track) => track.stop());
-        }
-      } else {
-        startWebcam();
-      }
-    }, [imageOnly]);
+    const { initLocalModel, inferLocal, status, localInferenceResult } = inference;
 
     // trigger loading when model init starts
     useEffect(() => {
       setModelLoading?.(true);
-      if (usingLocal) inference.initLocalModel();
-      else inference.init();
-    }, []);
+      initLocalModel();
+    }, [initLocalModel, setModelLoading]);
 
     // Pre-initialize canvas size for better LCP
     useEffect(() => {
@@ -107,34 +92,28 @@ const InferenceWebcam = forwardRef<InferenceWebcamHandle, InferenceWebcamProps>(
 
     // once model is ready, stop loading and continue
     useEffect(() => {
-      if (inference.status === InferenceStatus.READY) {
+      if (status === InferenceStatus.READY) {
         setModelLoading?.(false);
         if (imageOnly && imageSrc && imageRef.current) {
-          inference.inferLocal(
+          inferLocal(
             imageRef.current,
             canvasRef.current!,
             showScannerGrid
           );
-        } else if (!imageOnly) {
-          startWebcam();
         }
       }
-    }, [inference.status, imageSrc]);
+    }, [status, imageSrc, imageOnly, showScannerGrid, inferLocal, setModelLoading]);
 
     useEffect(() => {
-      if (inference.status === InferenceStatus.READY && !imageOnly) {
-        if (currentStream.current) {
-          currentStream.current.getTracks().forEach((track) => track.stop());
-        }
-        startWebcam();
-      }
-    }, [facingMode, cameraDevice]);
+      onDetect?.(localInferenceResult ?? []);
+    }, [localInferenceResult, onDetect]);
 
     useEffect(() => {
-      onDetect?.(inference.localInferenceResult ?? []);
-    }, [inference.localInferenceResult]);
-
-    const startWebcam = () => {
+      if (imageOnly || status !== InferenceStatus.READY) return;
+      let cancelled = false;
+      let ownedStream: MediaStream | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const video = videoRef.current;
       const videoConstraints = cameraDevice
         ? { deviceId: { exact: cameraDevice } }
         : { facingMode: facingMode };
@@ -148,6 +127,11 @@ const InferenceWebcam = forwardRef<InferenceWebcamHandle, InferenceWebcamProps>(
       };
 
       navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        ownedStream = stream;
         currentStream.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -187,26 +171,45 @@ const InferenceWebcam = forwardRef<InferenceWebcamHandle, InferenceWebcamProps>(
               const inferLoop = () => {
                 // Stop if video is paused or ended
                 if (
-                  !videoRef.current ||
+                  cancelled || !videoRef.current ||
                   videoRef.current.paused ||
                   videoRef.current.ended
                 )
                   return;
-                clearCanvas();
-                inference.inferLocal(
+                ctx.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
+                inferLocal(
                   videoRef.current!,
                   canvasRef.current!, // always render to canvas for bounding box
                   showScannerGrid,
                   false
                 );
-                setTimeout(inferLoop, 200);
+                timer = setTimeout(inferLoop, 200);
               };
               if (!imageOnly) inferLoop();
             }
           };
         }
+      }).catch((error: unknown) => {
+        if (!cancelled) console.error("Unable to start camera:", error);
       });
-    };
+      return () => {
+        cancelled = true;
+        if (timer !== undefined) clearTimeout(timer);
+        ownedStream?.getTracks().forEach((track) => track.stop());
+        if (currentStream.current === ownedStream) currentStream.current = null;
+        if (video) {
+          video.onloadedmetadata = null;
+          video.onplay = null;
+          video.srcObject = null;
+        }
+      };
+    }, [cameraDevice, facingMode, imageOnly, status, inferLocal, showScannerGrid]);
+
+    useEffect(() => {
+      return () => {
+        if (imageSrc) URL.revokeObjectURL(imageSrc);
+      };
+    }, [imageSrc]);
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -214,15 +217,6 @@ const InferenceWebcam = forwardRef<InferenceWebcamHandle, InferenceWebcamProps>(
         const url = URL.createObjectURL(file);
         setImageSrc(url);
 
-        setTimeout(
-          () =>
-            inference.inferLocal(
-              imageRef.current!,
-              canvasRef.current!,
-              showScannerGrid
-            ),
-          1000
-        );
       }
     };
 

@@ -8,7 +8,7 @@ import {
 import { create } from "zustand";
 import axios from "@/lib/axios";
 import { ModifiedQuizAnswerQuestion, Quiz } from "@/types/type.quiz";
-import { mockQuizzes } from "@/constants/mock/mockQuizzes";
+import { isSampleContent, SAMPLE_QUIZ_ID, sampleQuiz } from '@/lib/showcase-content';
 
 export type QuizStore = {
   status: Status;
@@ -76,7 +76,11 @@ const useQuizStore = create<QuizStore>((set) => ({
     });
   },
   loadQuiz: async (quiz_id: string) => {
-    set({ status: "Loading" });
+    if (isSampleContent(quiz_id)) {
+      set({ quiz: quiz_id === SAMPLE_QUIZ_ID ? sampleQuiz : undefined, status: quiz_id === SAMPLE_QUIZ_ID ? 'Loaded' : 'Error', error: undefined });
+      return;
+    }
+    set({ quiz: undefined, error: undefined, status: "Loading" });
     try {
       const response = await axios.get(`/quiz/get/${quiz_id}`);
       if (response.status === 200) {
@@ -113,6 +117,10 @@ const useQuizStore = create<QuizStore>((set) => ({
     }
   },
   loadQuizDetails: async (quiz_id: string) => {
+    if (isSampleContent(quiz_id)) {
+      set({ quiz_details: quiz_id === SAMPLE_QUIZ_ID ? sampleQuiz : undefined, status: quiz_id === SAMPLE_QUIZ_ID ? 'Loaded' : 'Error', error: undefined });
+      return;
+    }
     set({ status: "Loading" });
     try {
       const quizResponse = await axios.get(`/quiz/get/${quiz_id}`);
@@ -122,31 +130,11 @@ const useQuizStore = create<QuizStore>((set) => ({
         quizResponse.data;
       set({ quiz_details: quiz, status: "Loaded" });
     } catch {
-      // Fallback to mock data
-      const mockQuiz = mockQuizzes.find((q) => q.metadata.quiz_id === quiz_id);
-      console.log(
-        "Mock fallback for quiz_id:",
-        quiz_id,
-        "Found:",
-        !!mockQuiz,
-        mockQuiz
-      );
-      if (mockQuiz) {
-        set({
-          quiz_details: mockQuiz,
-          status: "Loaded",
-          error: "Using mock data due to API failure.",
-        });
-      } else {
-        set({
-          quiz_details: undefined,
-          status: "Error",
-          error: "Quiz not found in mock data.",
-        });
-      }
+      set({ quiz_details: undefined, status: "Error", error: "Quiz is unavailable or not public." });
     }
   },
   submitQuizAnswers: async (quiz_id: string, answers) => {
+    if (isSampleContent(quiz_id)) return; // Public examples never write account data.
     set({ status: "Loading" });
     try {
       await axios.post(`/quiz/answers/save/`, {
@@ -158,6 +146,7 @@ const useQuizStore = create<QuizStore>((set) => ({
     }
   },
   loadQuizAnswerHistory: async (quiz_id: string, user_id: string) => {
+    if (isSampleContent(quiz_id)) { set({ answerHistory: undefined }); return; }
     set({ status: "Loading" });
     try {
       const response = await axios.get(
@@ -192,8 +181,8 @@ const useQuizStore = create<QuizStore>((set) => ({
       if (response.status === 200) {
         const quizzes = response.data;
         if (Array.isArray(quizzes) && quizzes.length === 0) {
-          set({ quizzes: undefined, status: "Loaded" });
-          return undefined;
+          set({ quizzes: [sampleQuiz], error: 'No live quizzes available. Showing a labelled bundled sample.', status: "Loaded" });
+          return [sampleQuiz];
         }
         set({ quizzes, status: "Loaded" });
         return quizzes;
@@ -202,11 +191,11 @@ const useQuizStore = create<QuizStore>((set) => ({
       }
     } catch {
       set({
-        quizzes: mockQuizzes,
+        quizzes: [sampleQuiz],
         status: "Loaded",
-        error: "Using mock data due to API failure.",
+        error: "Live quizzes are unavailable. Showing a labelled bundled sample; scores are not saved.",
       });
-      return mockQuizzes;
+      return [sampleQuiz];
     }
   },
   loadMyQuizzes: async (userId: string) => {

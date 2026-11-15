@@ -4,16 +4,27 @@ import {
 } from "@/db/schema/learning-resources";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireApiAccess } from "@/lib/auth/api-access";
+import { findReadableLesson, findLessonModule } from "@/lib/auth/lesson-access";
 
 export async function POST(
   request: Request,
-  { params }: { params: { resource_id: string; module_id: string } }
+  { params }: { params: Promise<{ resource_id: string; module_id: string }> }
 ) {
   try {
-    const { module_id } = await params;
+    const access = await requireApiAccess(request);
+    if (access.response) return access.response;
+    const { resource_id, module_id } = await params;
     const body = await request.json();
 
-    const { userId } = body;
+    if (body.userId && body.userId !== access.session.user.id) {
+      return NextResponse.json({ error: "Cannot finish a module for another user" }, { status: 403 });
+    }
+    const userId = access.session.user.id;
+    if (!await findReadableLesson(resource_id, access.session.user) ||
+        !await findLessonModule(resource_id, module_id)) {
+      return NextResponse.json({ error: "Module not found" }, { status: 404 });
+    }
 
     if (!userId) {
       return NextResponse.json(

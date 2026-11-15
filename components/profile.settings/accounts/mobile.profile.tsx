@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/app/lib/auth-client";
 import MobileEditProfile from "./edit.profile/mobile.edit";
+import type { ProfileSaveStatus } from "@/lib/auth/profile-update";
 import MobileSettings from "./mobile.settings";
 import {
   Dialog,
@@ -46,6 +47,7 @@ export default function ProfileModalMobile({
   const [isSettingsVisible, setIsSettingsVisible] = useState(false);
   const [currentUserData, setCurrentUserData] = useState(userData);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [profileNotice, setProfileNotice] = useState("");
 
   // Update currentUserData when userData prop changes
   useEffect(() => {
@@ -82,43 +84,10 @@ export default function ProfileModalMobile({
     }
   };
 
-  const handleSaveProfile = async (updatedData: UserData) => {
-    try {
-      // Prepare the data to be sent to the server
-      const dataToUpdate = {
-        ...updatedData,
-        // Use the new profile picture URL if provided, otherwise keep the existing one
-        profilePictureUrl:
-          updatedData.profilePictureUrl ?? currentUserData.profilePictureUrl,
-      };
-
-      const response = await fetch("/api/user.information/update", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(dataToUpdate),
-      });
-      if (!response.ok) {
-        throw new Error("Failed to update profile");
-      }
-
-      // Update the local state with new data
-      setCurrentUserData({
-        ...updatedData,
-        // Remove cache-busting from state update
-        profilePictureUrl: dataToUpdate.profilePictureUrl,
-        authProviders:
-          updatedData.authProviders || currentUserData.authProviders,
-      });
-      setIsEditing(false);
-
-      if (onEdit) {
-        onEdit();
-      }
-    } catch (error) {
-      console.error("Error updating profile:", error);
-    }
+  const handleSaveProfile = (updatedData: UserData, status: ProfileSaveStatus = {}) => {
+    setCurrentUserData({ ...updatedData, authProviders: updatedData.authProviders || currentUserData.authProviders });
+    setProfileNotice(status.message || "Profile saved.");
+    if (!status.keepEditing) setIsEditing(false);
   };
 
   const handleEditClick = () => {
@@ -183,6 +152,7 @@ export default function ProfileModalMobile({
       </div>
 
       {/* Profile Section */}
+      {profileNotice && <p role="status" className="px-4 text-sm text-blue-200">{profileNotice}</p>}
       <div className="p-4">
         <div className="flex items-center">
           <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center mr-4 overflow-hidden">

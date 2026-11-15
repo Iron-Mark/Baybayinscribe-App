@@ -1,3 +1,4 @@
 
-import translate from '@google-cloud/translate';
+// Reserved for a future translation adapter; no provider is initialized here.
+export {};
 

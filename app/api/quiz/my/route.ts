@@ -2,9 +2,15 @@ import db from "@/db/drizzle";
 import { metadata, quiz_question, QuizSchema } from "@/db/schema/quiz-schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireApiAccess } from "@/lib/auth/api-access";
 
 export async function POST(request: Request) {
+  const access = await requireApiAccess(request);
+  if (access.response) return access.response;
   const { userId } = await request.json();
+  if (userId && userId !== access.session.user.id && access.session.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   if (!userId) {
     return NextResponse.json(

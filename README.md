@@ -1,10 +1,16 @@
 # BaybayinScribe Client
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/UMak-Gilas-Tech/baybayinscribe-client)
+[![Verification](https://img.shields.io/badge/verification-local_only-lightgrey)](docs/security-maintenance.md)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/UMak-Gilas-Tech/baybayinscribe-client/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 BaybayinScribe is an application for working with the ancient Philippine script called Baybayin. This client application provides a user-friendly interface for interacting with Baybayin.
+
+This revival fork keeps the legacy app usable as a guest showcase. If the original
+content service is unavailable, clearly labelled bundled samples demonstrate a
+lesson and quiz without creating accounts or saving scores. They are not a
+recovery of the original course database. See [guest mode](docs/guest-mode.md)
+for scope, verification and the separate production migration/provider gates.
 
 [View Demo](https://baybayinscribe-demo.example.com) · [Report Bug](https://github.com/UMak-Gilas-Tech/baybayinscribe-client/issues) · [Request Feature](https://github.com/UMak-Gilas-Tech/baybayinscribe-client/issues)
 
@@ -48,6 +54,7 @@ BaybayinScribe is dedicated to preserving and promoting the ancient Filipino wri
 - Cross-platform support (Web and Mobile)
 - Push notifications for practice reminders (Android)
 - Offline capability for learning on the go
+- [Guest showcase mode](docs/guest-mode.md) for public learning and local practice without login; account saves and live AI remain protected.
 
 ### Built With
 
@@ -234,23 +241,39 @@ Detailed usage documentation is available [in the wiki](https://github.com/UMak-
 
 ## Testing
 
-Run tests with the following command:
+For the dependency-security maintenance path, **npm and `package-lock.json`
+are authoritative**. The historical `bun.lockb` is retained but is not refreshed
+by this repair; do not use it to reproduce the repaired dependency graph. Use
+Node.js 24 and the repository's `.npmrc` settings for frozen installs:
 
 ```bash
-bun test
+npm ci --ignore-scripts
+npm run test:security
+npm run lint
+npm run typecheck
+npm run build
+npm audit
 ```
 
-For component tests:
+`test:security` runs local-only dependency compatibility checks. It does not send
+email, open a database connection, call AI providers, or prove the complete
+application works. This repository does not currently configure component or
+end-to-end test scripts; the old `test:components`/`test:e2e` commands were not
+executable verification gates.
 
-```bash
-bun run test:components
-```
+Production builds enforce TypeScript and ESLint checks. Run the separate strict
+gates too: lint rejects warnings, and typecheck regenerates Next.js route types
+before checking source. Do not bypass these gates to publish. See
+[security maintenance notes](docs/security-maintenance.md) for scope and limits.
 
-For end-to-end tests:
-
-```bash
-bun run test:e2e
-```
+Custom APIs enforce server-side session/role/ownership checks; lesson and quiz
+editing requires an administrator. Before publishing this repair, review and
+stage the [prepared auth-column migration](db/migrations/review/README.md).
+It has not been applied, and local passing tests do not establish database or
+full account-security readiness. See the security notes for remaining release gates.
+Email edits use a [two-mailbox confirmation flow](docs/email-change.md); the current
+address stays unchanged until verification completes. The ban-expiry timestamp
+conversion is also prepared for review, not applied to a database.
 
 ## Deployment
 
@@ -303,9 +326,9 @@ bun run test:e2e
    - Run `bunx cap sync` again after resolving issues
 
 2. **Build Errors**
-   - Make sure all dependencies are installed: `bun install`
-   - Clear cache: `bun cache rm --all`
-   - Rebuild: `bun run build`
+   - Reproduce the supported dependency graph: `npm ci --ignore-scripts`
+   - Run `npm run lint` and `npm run typecheck`; repair the reported source errors
+   - Rebuild: `npm run build` (do not clear caches unless evidence identifies corruption)
 
 3. **API Connection Issues**
    - Verify your `.env.local` configuration

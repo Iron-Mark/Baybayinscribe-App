@@ -20,6 +20,7 @@ import { SocialLoginButtons } from "../components/SocialLoginButtons";
 import { PasswordInput } from "../components/InputPassword";
 import { AccountHelper } from "../components/AccountHelper";
 import { AccountPwHelper } from "../components/AccountPwHelper";
+import Link from "next/link";
 
 export async function getServerSideProps() {}
 
@@ -112,6 +113,9 @@ export const LoginForm = ({
           </CardDescription>
         </CardHeader>
         <CardContent className="max-w-full">
+          <Link href="/" className="mb-4 block rounded-md border border-blue-400 px-4 py-3 text-center font-medium text-blue-900 hover:bg-blue-50">
+            Continue as guest
+          </Link>
           <SocialLoginButtons {...memoizedSocialHandlers} />
 
           <ShadcnForm {...form}>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { X, Eye, EyeClosed } from "lucide-react";
 import {
@@ -9,6 +9,7 @@ import {
   PasswordStrength,
 } from "@/lib/auth/passwordValidation";
 import { authClient } from "../../../../app/lib/auth-client"; // Import authClient
+import { saveProfileChanges, ProfileEmailChangeError, type ProfileSaveStatus } from "@/lib/auth/profile-update";
 
 type UserData = {
   firstName: string;
@@ -23,7 +24,7 @@ type UserData = {
 type MobileEditProfileProps = {
   onClose: () => void;
   userData: UserData;
-  onSave: (updatedData: UserData) => void;
+  onSave: (updatedData: UserData, status?: ProfileSaveStatus) => void | Promise<void>;
 };
 
 export default function MobileEditProfile({
@@ -45,7 +46,8 @@ export default function MobileEditProfile({
         | "profilePicture"
         | "currentPassword"
         | "password"
-        | "confirmPassword",
+        | "confirmPassword"
+        | "submit",
         string
       >
     >
@@ -55,10 +57,15 @@ export default function MobileEditProfile({
   const [showCurrentPassword, setShowCurrentPassword] = useState(false); // Add state for current password visibility
   const [showPassword, setShowPassword] = useState(false); // Add state for new password visibility
   const [showConfirmPassword, setShowConfirmPassword] = useState(false); // Add state for confirm password visibility
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
+  const retryEmailRef = useRef<string | null>(null);
 
   // Update internal state when userData prop changes
   useEffect(() => {
-    setFormData(userData);
+    const retryEmail = retryEmailRef.current;
+    if (retryEmail?.trim().toLowerCase() === userData.email.trim().toLowerCase()) retryEmailRef.current = null;
+    setFormData({ ...userData, email: retryEmailRef.current ?? userData.email });
     setProfileImage(
       userData.profilePictureUrl || "/images/user.profile/user.avatar.webp"
     );
@@ -78,6 +85,7 @@ export default function MobileEditProfile({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
+    if (name === "email" && retryEmailRef.current !== null) retryEmailRef.current = value;
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -201,11 +209,7 @@ export default function MobileEditProfile({
         };
         setFormData(updatedFormData);
 
-        // Call onSave with the complete updated data to immediately update the parent component
-        onSave({
-          ...userData,
-          ...updatedFormData,
-        });
+        // Only the explicit Save Changes action may request an email change.
       } catch (error) {
         console.error("Error uploading profile picture:", error);
         setErrors((prev) => ({
@@ -236,22 +240,6 @@ export default function MobileEditProfile({
         );
       }
 
-      // Update user information in database with null profile picture URL
-      const response = await fetch("/api/user.information/update", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...formData,
-          profilePictureUrl: null,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to remove profile picture");
-      }
-
       setFormData((prev) => ({
         ...prev,
         profilePictureUrl: null, // The backend will handle setting this to null in the DB
@@ -265,11 +253,7 @@ export default function MobileEditProfile({
       setFormData(updatedFormData);
       setProfileImage("/images/user.profile/user.avatar.webp"); // Update modal's preview image
 
-      // Call onSave with the complete updated data including null profilePictureUrl
-      onSave({
-        ...userData, // Start with original user data
-        ...updatedFormData, // Overlay with current form data (now with profilePictureUrl: null)
-      });
+      // Do not persist unrelated edits or request email confirmation on image removal.
     } catch (error) {
       console.error("Error removing profile picture:", error);
       setErrors((prev) => ({
@@ -281,6 +265,7 @@ export default function MobileEditProfile({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingRef.current) return;
 
     // Simple validation
     const newErrors: Partial<
@@ -311,7 +296,7 @@ export default function MobileEditProfile({
       const passwordSchema = createPasswordSchema();
       const passwordResult = passwordSchema.safeParse(password);
       if (!passwordResult.success) {
-        newErrors.password = passwordResult.error.errors[0].message;
+        newErrors.password = passwordResult.error.issues[0].message;
       }
       if (!confirmPassword) {
         newErrors.confirmPassword = "Please confirm your new password"; // Changed message for clarity
@@ -325,6 +310,8 @@ export default function MobileEditProfile({
       return;
     }
 
+    savingRef.current = true;
+    setIsSaving(true);
     try {
       // Create update data that includes all form data, ensuring profile picture URL is included
       const dataToUpdate = {
@@ -369,38 +356,14 @@ export default function MobileEditProfile({
         setConfirmPassword("");
       }
 
-      // Update other user information (excluding password fields)
-      // We only call the update API if there are changes beyond password or if password wasn't changed alone
-      if (
-        !password ||
-        Object.keys(dataToUpdate).some(
-          (key) =>
-            dataToUpdate[key as keyof UserData] !==
-            (userData as UserData)[key as keyof UserData]
-        )
-      ) {
-        const response = await fetch("/api/user.information/update", {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(dataToUpdate),
-        });
-
-        const responseData = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            responseData.error ||
-              responseData.message ||
-              "Failed to update profile"
-          );
-        }
-      }
-
-      // Call onSave with the complete update data
-      onSave(dataToUpdate);
+      const saved = await saveProfileChanges(userData.email, dataToUpdate);
+      retryEmailRef.current = null;
+      await onSave(saved.profile, { message: saved.message });
     } catch (error) {
+      if (error instanceof ProfileEmailChangeError) {
+        retryEmailRef.current = formData.email;
+        await onSave(error.profile, { keepEditing: true, message: error.message });
+      }
       console.error("Error updating profile:", error);
       setErrors((prev) => ({
         ...prev,
@@ -409,6 +372,9 @@ export default function MobileEditProfile({
             ? error.message
             : "An error occurred while saving changes",
       }));
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -722,7 +688,7 @@ export default function MobileEditProfile({
               Email
             </label>
             <p className="text-xs text-gray-500 mt-1 mb-1">
-              Update your email address.
+              Email changes require mailbox confirmation. Your current address stays active until verification completes.
             </p>
             <input
               type="email"
@@ -779,12 +745,14 @@ export default function MobileEditProfile({
           </div>
 
           {/* Action Buttons */}
+          {errors.submit && <p role="alert" className="text-red-500 text-sm">{errors.submit}</p>}
           <div className="border-t border-gray-200 pt-4 mt-6 space-y-3">
             <button
               type="submit"
+              disabled={isSaving}
               className="w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 cursor-pointer"
             >
-              Save Changes
+              {isSaving ? "Saving..." : "Save Changes"}
             </button>
 
             <button
