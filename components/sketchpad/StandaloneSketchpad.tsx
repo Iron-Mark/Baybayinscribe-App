@@ -216,8 +216,8 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
   };
 
   // Touch event handlers for mobile
+  // The canvas uses touch-action: none; React touch listeners are passive.
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
     const c = canvasRef.current;
     const ctx = c?.getContext("2d");
     if (!c || !ctx) return;
@@ -239,7 +239,6 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
 
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (!drawing) return;
-    e.preventDefault();
     const c = canvasRef.current!;
     const ctx = c.getContext("2d")!;
     const r = c.getBoundingClientRect();
@@ -342,7 +341,7 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
         <div className="relative w-full h-full">
           <canvas
             ref={canvasRef}
-            className="w-full h-full bg-white shadow-2xl border border-gray-200 rounded-xl cursor-crosshair"
+            className="w-full h-full touch-none bg-white shadow-2xl border border-gray-200 rounded-xl cursor-crosshair"
             onMouseDown={(e) => start(e.nativeEvent)}
             onMouseMove={(e) => draw(e.nativeEvent)}
             onMouseUp={end}
