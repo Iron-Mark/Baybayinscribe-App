@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from "react";
+import LocalModelNotice from "@/components/LocalModelNotice";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuItem } from "@/components/ui/dropdown.menu";
 import { Popover } from "@/components/ui/popover";
@@ -138,7 +139,6 @@ const VisionScreen = () => {
     undefined
   );
   const [infoOpen, setInfoOpen] = useState(false);
-  const [modelLoading, setModelLoading] = useState(true);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [seenText, setSeenText] = useState(false);
@@ -224,7 +224,7 @@ const VisionScreen = () => {
       <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex flex-row items-center justify-center gap-4 text-red-500">
+            <DialogTitle className="flex flex-row items-center justify-center gap-4 text-red-800">
               Model Accuracy Notice <TriangleAlert />{" "}
             </DialogTitle>
             <br />
@@ -244,15 +244,7 @@ const VisionScreen = () => {
         </DialogContent>
       </Dialog>
 
-      {/* AI model loading overlay */}
-      {modelLoading && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0E1425]/80">
-          <div className="animate-spin rounded-full h-24 w-24 border-t-4 border-b-4 border-blue-400 mb-6" />
-          <span className="text-white text-xl font-semibold tracking-wide drop-shadow-lg">
-            Loading AI Model...
-          </span>
-        </div>
-      )}
+      <LocalModelNotice />
 
       <div className="relative flex flex-col md:flex-row h-full w-full gap-6 p-4 md:gap-10 md:p-10">
         <div className="flex-1 w-full flex flex-col items-center z-10 mb-6 md:mb-0">
@@ -263,7 +255,6 @@ const VisionScreen = () => {
           />
 
           <InferenceWebcam
-            setModelLoading={setModelLoading}
             imageOnly={!realTimeDetection}
             onDetect={(text) => {
               // If text is null/undefined or empty, do nothing.

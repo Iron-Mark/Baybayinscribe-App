@@ -3,7 +3,14 @@
 This reuses the existing app, without guest accounts, new database tables,
 anonymous server writes, or an authentication bypass flag.
 
-Public showcase: https://baybayinscribe-client-showcase.vercel.app
+Public showcase: https://baybayinscribe.vercel.app
+
+The shorter address is a verified production domain on the same Vercel project,
+not a second project. Production site/auth URL settings use this canonical host
+to avoid cross-origin session requests. The original
+https://baybayinscribe-client-showcase.vercel.app address redirects to it.
+Preview deployment protection remains enabled; this domain change does not
+restore the original account services.
 
 The isolated Vercel project uses Next.js, Node 24, `npm ci --ignore-scripts` and
 `npm run build`. Its three public API/site/auth URL settings are scoped to this
@@ -21,10 +28,17 @@ sample-backed guest showcase, not a restoration of production account services.
 - Public quiz practice and the existing in-visit result screen. Guest answers
   never call the answer-submission/history APIs or acquire a fake user ID.
 - Text-only quizzes do not initialize the recognition model. Quizzes containing
-  `SKT`/`sketch` questions still load it; scanner and standalone sketch behavior
-  are unchanged. This avoids model warmup stalling simple sample questions.
+  `SKT`/`sketch` questions still load it. This avoids model warmup stalling simple
+  sample questions.
 - Filipino/Baybayin transliteration, sketching and camera scanning, using the
   existing bundled local recognition model. Camera permission is still required.
+
+Recognition initialization is shared while in flight and a ready model is reused
+across client-side tool navigation. A full reload still needs the original model
+download/warmup; there is no new model or offline-cache architecture. Sketch and
+scanner show a nonblocking loading notice so navigation and drawing remain
+available. Analysis/camera inference wait for readiness. Initialization errors
+show a retry action instead of a permanent full-screen spinner.
 
 The login page offers **Continue as guest**; guest pages show a notice with
 practice links and a sign-in link. The sidebar does not fetch or open a guest
@@ -96,6 +110,14 @@ warnings. Only the drawing canvas disables browser touch gestures. This is not a
 physical-device, real-authentication or recognition-accuracy check (the session
 response is a synthetic guest); the same loopback URL and browser
 environment variables apply.
+
+`node tests/model-usability-browser.mjs` deliberately fails the first local model
+request, checks drawing remains available, retries with the real bundled model,
+then navigates to the scanner without another model download. It also checks
+the three repaired text contrasts and simulated-camera shutdown in portrait and
+landscape with reduced motion. Session data is synthetic; it does not validate
+real sign-in or physical-camera accuracy. `UI_ARTIFACT_DIR` optionally selects an
+existing screenshot directory.
 
 ```powershell
 node tests/guest-browser.mjs

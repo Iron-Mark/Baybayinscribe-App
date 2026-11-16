@@ -376,8 +376,8 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
       <div className="mt-4 w-full px-10 lg:w-3/4 lg:px-2">
         <Button
           onClick={handleSubmit}
-          className="bg-blue-500 hover:bg-blue-600 shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl"
-          disabled={inference.status === InferenceStatus.LOADING || inference.status === InferenceStatus.WARMING_UP}
+          className="bg-blue-400 text-white hover:bg-blue-300 shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl"
+          disabled={inference.status !== InferenceStatus.READY || inference.isInferring}
         >
           Analyze Drawing
         </Button>

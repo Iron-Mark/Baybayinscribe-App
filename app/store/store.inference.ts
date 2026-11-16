@@ -46,7 +46,7 @@ export interface InferenceState {
   localInferenceResult: InferenceResult[] | undefined;
   isInferring: boolean;
   init: () => void;
-  initLocalModel: () => void;
+  initLocalModel: () => Promise<void>;
   inferLocal: (
     image: HTMLVideoElement | HTMLImageElement | undefined,
     canvas: HTMLCanvasElement,
@@ -64,6 +64,8 @@ export interface InferenceState {
   cleanup: () => void;
   clearResults: () => void;
 }
+
+let localModelInitialization: Promise<void> | undefined;
 
 export const useInferenceStore = create<InferenceState>()((set, get) => ({
   status: InferenceStatus.IDLE,
@@ -230,54 +232,48 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
     }
   },
   
-  initLocalModel: async () => {
-    try {
-      // Initialize backend properly
-      await tf.ready();
-      
-      // Try webgl first, fallback to cpu if needed
-      try {
-        await tf.setBackend("webgl");
-        await tf.ready();
-        console.log("Using WebGL backend");
-      } catch (webglError) {
-        console.warn("WebGL backend failed, falling back to CPU:", webglError);
-        await tf.setBackend("cpu");
-        await tf.ready();
-        console.log("Using CPU backend");
-      }
-      
+  initLocalModel: () => {
+    if (get().status === InferenceStatus.READY && get().localModel) return Promise.resolve();
+    if (localModelInitialization) return localModelInitialization;
+    localModelInitialization = (async () => {
+      let model: tf.GraphModel | undefined;
       set({ status: InferenceStatus.LOADING });
-     
-      console.log("Loading model from:", "/models/model.json");
-      const model = await tf.loadGraphModel("/models/model.json");
-      console.log("Model loaded successfully");
-      console.log("Model input shape:", model.inputs[0].shape);
-      console.log("Model output shape:", model.outputs[0].shape);
-
-      // Set warming up state
-      set({ status: InferenceStatus.WARMING_UP });
-
-      console.log("Warming up model...");
-      if (model.inputs[0].shape) {
-        const dummy = tf.ones(model.inputs[0].shape);
-        const response = await model.executeAsync(dummy);
-
-        // Properly dispose warmup tensors
-        dummy.dispose();
-        if (Array.isArray(response)) {
-          response.forEach(tensor => tensor.dispose());
-        } else {
-          response.dispose();
+      try {
+        get().localModel?.dispose();
+        set({ localModel: undefined });
+        await tf.ready();
+        try {
+          await tf.setBackend("webgl");
+          await tf.ready();
+        } catch (webglError) {
+          console.warn("WebGL backend failed, falling back to CPU:", webglError);
+          await tf.setBackend("cpu");
+          await tf.ready();
         }
-      }
 
-      set({ status: InferenceStatus.READY, localModel: model });
-      console.log("Model ready for inference!");
-    } catch (error) {
-      console.error("Failed to initialize model:", error);
-      set({ status: InferenceStatus.ERROR });
-    }
+        model = await tf.loadGraphModel("/models/model.json");
+        set({ status: InferenceStatus.WARMING_UP });
+        if (model.inputs[0].shape) {
+          const dummy = tf.ones(model.inputs[0].shape);
+          let response: tf.Tensor | tf.Tensor[] | undefined;
+          try {
+            response = await model.executeAsync(dummy);
+          } finally {
+            dummy.dispose();
+            if (Array.isArray(response)) response.forEach(tensor => tensor.dispose());
+            else response?.dispose();
+          }
+        }
+
+        set({ status: InferenceStatus.READY, localModel: model });
+        console.log("Model ready for inference!");
+      } catch (error) {
+        model?.dispose();
+        console.error("Failed to initialize model:", error);
+        set({ status: InferenceStatus.ERROR });
+      }
+    })().finally(() => { localModelInitialization = undefined; });
+    return localModelInitialization;
   },
   
   clearResults: () => {

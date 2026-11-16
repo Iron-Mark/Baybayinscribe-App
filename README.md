@@ -12,7 +12,7 @@ lesson and quiz without creating accounts or saving scores. They are not a
 recovery of the original course database. See [guest mode](docs/guest-mode.md)
 for scope, verification and the separate production migration/provider gates.
 
-[View Showcase](https://baybayinscribe-client-showcase.vercel.app) · [Report Bug](https://github.com/Iron-Mark/baybayinscribe-client-showcase/issues) · [Original Project](https://github.com/UMak-Gilas-Tech/baybayinscribe-client)
+[View Showcase](https://baybayinscribe.vercel.app) · [Report Bug](https://github.com/Iron-Mark/baybayinscribe-client-showcase/issues) · [Original Project](https://github.com/UMak-Gilas-Tech/baybayinscribe-client)
 
 ## Table of Contents
 

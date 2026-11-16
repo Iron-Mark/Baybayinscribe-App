@@ -92,6 +92,7 @@ const InferenceWebcam = forwardRef<InferenceWebcamHandle, InferenceWebcamProps>(
 
     // once model is ready, stop loading and continue
     useEffect(() => {
+      if (status === InferenceStatus.ERROR) setModelLoading?.(false);
       if (status === InferenceStatus.READY) {
         setModelLoading?.(false);
         if (imageOnly && imageSrc && imageRef.current) {
