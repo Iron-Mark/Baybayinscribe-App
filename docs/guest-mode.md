@@ -90,6 +90,13 @@ real user sign-in, physical-camera accuracy, provider delivery or deployment.
 Use an existing local Playwright/browser via `PLAYWRIGHT_MODULE_PATH` and
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` if Playwright is not installed in the repo.
 
+`node tests/sketch-touch-browser.mjs` checks the real local sketch page in Android
+Chrome emulation: touch strokes leave ink without scrolling or passive-listener
+warnings. Only the drawing canvas disables browser touch gestures. This is not a
+physical-device, real-authentication or recognition-accuracy check (the session
+response is a synthetic guest); the same loopback URL and browser
+environment variables apply.
+
 ```powershell
 node tests/guest-browser.mjs
 ```
