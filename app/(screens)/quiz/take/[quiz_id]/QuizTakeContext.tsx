@@ -96,8 +96,11 @@ export const QuizTakeProvider: React.FC<{
       // Load quiz first
       await loadQuiz(params.quiz_id);
 
-      // Initialize inference model immediately
-      if (useInferenceStore.getState().status === InferenceStatus.IDLE) {
+      // Text-only quizzes must not block on an unused recognition model.
+      const needsSketch = useQuizStore.getState().quiz?.questions.some(
+        (question) => question.type === 'SKT' || question.type === 'sketch'
+      );
+      if (needsSketch && useInferenceStore.getState().status === InferenceStatus.IDLE) {
         initLocalModel();
       }
     };

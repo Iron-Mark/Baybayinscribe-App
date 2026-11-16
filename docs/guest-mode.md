@@ -3,6 +3,15 @@
 This reuses the existing app, without guest accounts, new database tables,
 anonymous server writes, or an authentication bypass flag.
 
+Public showcase: https://baybayinscribe-client-showcase.vercel.app
+
+The isolated Vercel project uses Next.js, Node 24, `npm ci --ignore-scripts` and
+`npm run build`. Its three public API/site/auth URL settings are scoped to this
+showcase; its newly generated auth secret is a sensitive production variable,
+not a key copied from another app. Local `.env` files are excluded from uploads.
+The original database, mail and paid AI services remain unconfigured: this is a
+sample-backed guest showcase, not a restoration of production account services.
+
 ## Available without signing in
 
 - Home, public lesson/quiz lists and details, and public lesson modules.
@@ -11,6 +20,9 @@ anonymous server writes, or an authentication bypass flag.
   reloading/leaving that layout clears it. Nothing is uploaded or later synced.
 - Public quiz practice and the existing in-visit result screen. Guest answers
   never call the answer-submission/history APIs or acquire a fake user ID.
+- Text-only quizzes do not initialize the recognition model. Quizzes containing
+  `SKT`/`sketch` questions still load it; scanner and standalone sketch behavior
+  are unchanged. This avoids model warmup stalling simple sample questions.
 - Filipino/Baybayin transliteration, sketching and camera scanning, using the
   existing bundled local recognition model. Camera permission is still required.
 
