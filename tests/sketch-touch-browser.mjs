@@ -38,9 +38,11 @@ try {
   });
   const response = await page.goto(`${baseURL}/ai/sketch`, { waitUntil: 'networkidle', timeout: 120000 });
   assert.equal(response.status(), 200, 'sketch page must load successfully');
-  await page.getByText('Loading AI Model...', { exact: true }).waitFor({ state: 'hidden', timeout: 120000 });
   const notice = page.getByRole('button', { name: 'I Understand', exact: true });
+  await page.getByRole('heading', { name: 'Model Accuracy Notice' }).waitFor();
   if (await notice.count()) await notice.click();
+  await page.getByRole('button', { name: 'Analyze Drawing', exact: true }).waitFor();
+  await page.waitForFunction(() => !Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Analyze Drawing')?.disabled, undefined, { timeout: 120000 });
   const canvas = page.locator('canvas').first();
   await canvas.scrollIntoViewIfNeeded();
   await page.waitForTimeout(250); // Let initial canvas resize/image restoration settle.
