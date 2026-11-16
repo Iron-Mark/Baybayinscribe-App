@@ -1,5 +1,5 @@
 "use client";
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import { Pencil, Undo, Trash, ChevronDown, InfoIcon } from "lucide-react";
 import { useInferenceStore, InferenceState, InferenceStatus } from "@/app/store/store.inference";
 import baybayify, { baybayinToLatin } from "@/lib/baybayify";
@@ -16,14 +16,13 @@ import {
 } from "./CharacterSelection";
 import { useSketchpad } from "@/app/contexts/SketchpadContext";
 import SketchpadInformation from "./SketchpadInformation";
-import { isPromise } from "@/lib/isPromise";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 interface StandaloneSketchpadProps {
   setModelLoading?: (loading: boolean) => void;
@@ -36,7 +35,6 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [drawing, setDrawing] = useState(false);
   const [history, setHistory] = useState<ImageData[]>([]);
-  const [result, setResult] = useState<string | null>(null);
   const [strokeWidth, setStrokeWidth] = useState<number>(5);
   const [openGuide, setOpenGuide] = useState(false);
   const [showResultDrawer, setShowResultDrawer] = useState(false);
@@ -45,23 +43,28 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
     null
   );
   const inference = useInferenceStore() as InferenceState;
+  const initLocalModel = inference.initLocalModel;
+  const undo = useCallback(() => {
+    const c = canvasRef.current;
+    const ctx = c?.getContext("2d");
+    if (c && ctx && history.length) {
+      const prev = history[history.length - 1];
+      ctx.putImageData(prev, 0, 0);
+      setHistory((h) => h.slice(0, -1));
+    }
+  }, [history]);
 
   // initialise model
   useEffect(() => {
     let cancelled = false;
     if (setModelLoading) setModelLoading(true);
-    const maybePromise = inference.initLocalModel();
-    if (isPromise(maybePromise)) {
-      maybePromise.finally(() => {
-        if (!cancelled && setModelLoading) setModelLoading(false);
-      });
-    } else {
-      if (setModelLoading) setModelLoading(false);
-    }
+    void Promise.resolve(initLocalModel()).finally(() => {
+      if (!cancelled && setModelLoading) setModelLoading(false);
+    });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initLocalModel, setModelLoading]);
 
   // redraw on resize
   useEffect(() => {
@@ -118,15 +121,11 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [history]); // Include history as dependency
+  }, [undo]);
 
   // inference result watcher
   useEffect(() => {
     if (inference.localInferenceResult?.length) {
-      const str = inference.localInferenceResult
-        .map((i) => i.className)
-        .join("");
-      setResult(str);
       setShowResultDrawer(true); // open drawer when results are available
     }
   }, [inference.localInferenceResult]);
@@ -192,23 +191,12 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
     setDrawing(false);
   };
 
-  const undo = () => {
-    const c = canvasRef.current;
-    const ctx = c?.getContext("2d");
-    if (c && ctx && history.length) {
-      const prev = history[history.length - 1];
-      ctx.putImageData(prev, 0, 0);
-      setHistory((h) => h.slice(0, -1));
-    }
-  };
-
   const clear = () => {
     const c = canvasRef.current;
     const ctx = c?.getContext("2d");
     if (c && ctx) {
       ctx.clearRect(0, 0, c.width, c.height);
       setHistory([]);
-      setResult(null);
     }
   };
 
@@ -264,7 +252,7 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
     ctx.stroke();
   };
 
-  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+  const handleTouchEnd = () => {
     setDrawing(false);
   };
 
@@ -414,14 +402,14 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
       </Dialog>
 
       {/* Results Drawer using shadcn/ui */}
-      <Dialog open={showResultDrawer} onOpenChange={setShowResultDrawer}>
-        <DialogContent side="right" className="sm:max-w-md w-full">
-          <DialogHeader>
-            <DialogTitle>Recognition Results</DialogTitle>
-            <DialogDescription>
+      <Sheet open={showResultDrawer} onOpenChange={setShowResultDrawer}>
+        <SheetContent side="right" className="sm:max-w-md w-full">
+          <SheetHeader>
+            <SheetTitle>Recognition Results</SheetTitle>
+            <SheetDescription>
               Feedback for each detected character.
-            </DialogDescription>
-          </DialogHeader>
+            </SheetDescription>
+          </SheetHeader>
           <div className="flex flex-col gap-4 mt-2">
             {inference.localInferenceResult &&
             inference.localInferenceResult.length > 0 ? (
@@ -461,8 +449,8 @@ const StandaloneSketchpad: React.FC<StandaloneSketchpadProps> = ({
                 </div>
               )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       <SketchpadInformation open={openGuide} setOpen={setOpenGuide} />
     </div>

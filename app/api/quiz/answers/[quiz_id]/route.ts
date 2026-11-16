@@ -6,16 +6,22 @@ import {
   QuizSchema,
 } from "@/db/schema/quiz-schema";
 import { and, asc, eq } from "drizzle-orm";
+import { requireApiAccess } from "@/lib/auth/api-access";
 
 export async function GET(
   request: Request,
-  params: { params: { quiz_id: string } }
+  params: { params: Promise<{ quiz_id: string }> }
 ) {
+  const access = await requireApiAccess(request);
+  if (access.response) return access.response;
   const { quiz_id } = await params.params;
 
   // Get user_id from query string (?user_id=...)
   const { searchParams } = new URL(request.url);
   const user_id = searchParams.get("user_id");
+  if (user_id && user_id !== access.session.user.id && access.session.user.role !== "admin") {
+    return new Response("Forbidden", { status: 403 });
+  }
 
   if (!quiz_id || !user_id) {
     return new Response("Quiz ID and User ID are required", { status: 400 });
@@ -32,7 +38,10 @@ export async function GET(
     .orderBy(asc(quiz_answer_question.answered_at));
 
   // Group by attempt
-  const attemptsMap = new Map<number, { answers: any[] }>();
+  const attemptsMap = new Map<
+    number,
+    { answers: (typeof quiz_answer_question.$inferSelect)[] }
+  >();
   for (const row of answers) {
     const answer = row.quiz_answer_question;
     if (!answer) continue;

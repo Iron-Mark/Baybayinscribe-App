@@ -8,10 +8,11 @@ import {
 import db from "@/db/drizzle";
 import { Quiz } from "../../../types/type.quiz";
 import { eq } from "drizzle-orm";
+import { requireApiAccess } from "@/lib/auth/api-access";
 
 export const dynamic = "force-dynamic";
 
-async function saveQuizToDB(quiz: Quiz) {
+async function saveQuizToDB(quiz: Quiz, createdBy: string) {
   const quizId = crypto.randomUUID();
 
   console.log(quiz);
@@ -19,7 +20,7 @@ async function saveQuizToDB(quiz: Quiz) {
   // Insert master quiz record
   await db.insert(QuizSchema).values({
     id: quizId,
-    created_by: "", // Add a default created_by value or pass from the request
+    created_by: createdBy,
   });
 
   // Insert quiz metadata record
@@ -60,6 +61,8 @@ async function saveQuizToDB(quiz: Quiz) {
 
 export async function POST(request: Request) {
   try {
+    const access = await requireApiAccess(request, { admin: true });
+    if (access.response) return access.response;
     const { question_count, topic, difficulty, quiz_name } =
       await request.json();
 
@@ -77,7 +80,7 @@ export async function POST(request: Request) {
       quiz_name
     );
 
-    const savedQuiz = await saveQuizToDB(quiz);
+    const savedQuiz = await saveQuizToDB(quiz, access.session.user.id);
 
     return NextResponse.json(savedQuiz);
   } catch (error: unknown) {
@@ -91,6 +94,8 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const access = await requireApiAccess(request, { admin: true });
+    if (access.response) return access.response;
     const { quizId } = await request.json();
     if (!quizId) {
       return NextResponse.json(

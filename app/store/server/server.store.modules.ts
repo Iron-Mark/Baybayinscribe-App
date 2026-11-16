@@ -33,7 +33,6 @@ interface ModuleStore {
     }
   ) => Promise<Module>;
   deleteModule: (module_id: string) => Promise<{ message: string }>;
-  markModuleFinishedServer: (params: { moduleId: string }) => Promise<void>;
 }
 
 export const useModuleStore = create<ModuleStore>(() => ({
@@ -175,11 +174,5 @@ export const useModuleStore = create<ModuleStore>(() => ({
       .delete(learningResourceModule)
       .where(eq(learningResourceModule.id, module_id));
     return { message: "Module deleted successfully" };
-  },
-  markModuleFinishedServer: async ({ moduleId }) => {
-    await db
-      .update(learningResourceModule)
-      .set({ is_finished: true, updatedAt: new Date() })
-      .where(eq(learningResourceModule.module_id, moduleId));
   },
 }));

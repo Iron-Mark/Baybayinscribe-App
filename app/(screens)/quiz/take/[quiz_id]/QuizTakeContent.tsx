@@ -14,6 +14,7 @@ import { useQuizTakeContext } from "./QuizTakeContext";
 import { useRouter } from "next/navigation";
 import useQuizStore from "@/app/store/store.quiz";
 import { authClient } from "@/app/lib/auth-client";
+import { isSampleContent } from '@/lib/showcase-content';
 
 export const SubmitButton = () => {
   const { onSubmit } = useQuizTakeContext();
@@ -27,10 +28,15 @@ export const SubmitButton = () => {
 export const QuizTakeContent = () => {
   const quizContext = useQuizTakeContext();
   const router = useRouter();
-  const quizStore = useQuizStore();
+  const submitQuizAnswers = useQuizStore((state) => state.submitQuizAnswers);
+  const { quiz, health, progress, answerHistory, recordAnswer } = quizContext;
   const [userId, setUserId] = React.useState<string | null>(null);
 
   const dumpedRef = useRef(false);
+
+  useEffect(() => {
+    dumpedRef.current = false;
+  }, [quiz]);
 
   useEffect(() => {
     (async () => {
@@ -42,57 +48,47 @@ export const QuizTakeContent = () => {
   }, []);
 
   useEffect(() => {
-    if (!quizContext.quiz || dumpedRef.current) return;
+    if (!quiz || !userId || isSampleContent(quiz.metadata.quiz_id) || dumpedRef.current) return;
 
-    const isOutOfHealth = quizContext.health === 0;
+    const isOutOfHealth = health === 0;
     const isQuizCompleted =
-      quizContext.progress >= quizContext.quiz.questions.length;
+      progress >= quiz.questions.length;
 
     if ((isOutOfHealth || isQuizCompleted) && !dumpedRef.current) {
       // Fill unanswered questions if any
-      const unanswered = quizContext.quiz.questions.filter(
+      const unanswered = quiz.questions.filter(
         (q) =>
-          !quizContext.answerHistory.some((a) => a.quiz_question_id === q.id)
+          !answerHistory.some((a) => a.quiz_question_id === q.id)
       );
-      unanswered.forEach((q) => {
-        quizContext.recordAnswer({
+      const unansweredRecords = unanswered.map((q) => ({
           quiz_question_id: q.id,
           is_correct: false,
           user_answer: "Unanswered",
           attempt: 0,
           answered_at: new Date().toISOString(),
-          quiz_id: quizContext.quiz!.metadata.quiz_id,
-          user_id: userId || "", // Ensure user_id is set
-        });
-      });
+          quiz_id: quiz.metadata.quiz_id,
+          user_id: userId,
+      }));
 
       dumpedRef.current = true;
-
-      // Use a timeout to ensure state updates before submitting
-      setTimeout(() => {
-        quizStore.submitQuizAnswers(quizContext.quiz!.metadata.quiz_id, [
-          ...quizContext.answerHistory.map((a) => ({
+      unansweredRecords.forEach(recordAnswer);
+      // Submit the complete snapshot directly; queued React updates are not needed.
+      submitQuizAnswers(quiz.metadata.quiz_id, [
+          ...answerHistory.map((a) => ({
             ...a,
-            user_id: userId || "", // Ensure user_id is set
+            user_id: userId,
           })),
-          ...unanswered.map((q) => ({
-            quiz_question_id: q.id,
-            is_correct: false,
-            user_answer: "Unanswered",
-            attempt: 0,
-            answered_at: new Date().toISOString(),
-            quiz_id: quizContext.quiz!.metadata.quiz_id,
-            user_id: userId || "", // Ensure user_id is set
-          })),
+          ...unansweredRecords,
         ]);
-      }, 0);
     }
   }, [
-    quizContext.health,
-    quizContext.progress,
-    quizContext.quiz,
-    quizContext.answerHistory,
-    quizStore,
+    health,
+    progress,
+    quiz,
+    answerHistory,
+    recordAnswer,
+    submitQuizAnswers,
+    userId,
   ]);
 
   // Add helper function to compute total score
@@ -335,7 +331,7 @@ export const QuizTakeContent = () => {
           correctAnswers={
             quizContext.answerHistory.filter((a) => a.is_correct).length
           }
-          authorName="Sebby Siazon"
+          authorName={isSampleContent(quiz?.metadata.quiz_id) ? 'Bundled sample' : 'Sebby Siazon'}
           correctPercentage={
             (quizContext.answerHistory.filter((a) => a.is_correct).length /
               quizContext.answerHistory.length) *

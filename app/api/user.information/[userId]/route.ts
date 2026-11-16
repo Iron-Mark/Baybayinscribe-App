@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiAccess } from "@/lib/auth/api-access";
 import { Pool } from "pg";
 
 const pool = new Pool({
@@ -8,7 +9,7 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-export async function GET(req: NextRequest, { params }: { params: { userId: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
   try {
     const awaitedParams = await params;
     const { userId } = awaitedParams;
@@ -16,6 +17,9 @@ export async function GET(req: NextRequest, { params }: { params: { userId: stri
     if (!userId) {
       return NextResponse.json({ error: "User ID is required" }, { status: 400 });
     }
+
+    const access = await requireApiAccess(req, { userId });
+    if (access.response) return access.response;
 
     try {
       const result = await pool.query(
@@ -48,4 +52,4 @@ export async function GET(req: NextRequest, { params }: { params: { userId: stri
     console.error("Error fetching user information:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
-} 
+}

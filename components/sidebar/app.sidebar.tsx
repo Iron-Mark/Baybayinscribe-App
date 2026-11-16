@@ -57,8 +57,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [userData, setUserData] = React.useState<UserData | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const router = useRouter();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
+  const isGuest = !session;
 
-  const openProfileModal = () => setIsProfileModalOpen(true);
+  const openProfileModal = () => {
+    if (!session) { router.push('/auth/login'); return; }
+    setIsProfileModalOpen(true);
+  };
   const closeProfileModal = () => setIsProfileModalOpen(false);
 
   const { state } = useSidebar();
@@ -231,12 +236,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   };
 
   React.useEffect(() => {
-    fetchUserData();
-  }, []);
+    if (sessionPending) return;
+    if (!session) { setUserData(null); setIsLoading(false); return; }
+    void fetchUserData();
+  }, [sessionPending, session]);
 
   const projects1 = [
     {
-      name: "Profile",
+      name: isGuest ? "Sign in" : "Profile",
       action: openProfileModal,
       icon: UserCog,
     },
@@ -254,7 +261,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <>
       <Sidebar collapsible="icon" {...props}>
         <SidebarHeader>
-          {!isLoading && userData ? (
+          {!sessionPending && isGuest ? (
+            <a href="/auth/login" className="rounded-md p-2 text-sm text-blue-100 hover:bg-blue-800">
+              Guest · Sign in
+            </a>
+          ) : !isLoading && userData ? (
             <div className="flex items-center space-x-2 overflow-hidden">
               <div className="flex-shrink-0 ">
                 <Button
@@ -341,7 +352,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </Sidebar>
 
       {/* Profile Modal */}
-      {!isLoading && userData && (
+      {!isGuest && !isLoading && userData && (
         <ProfileModal
           isOpen={isProfileModalOpen}
           onClose={closeProfileModal}

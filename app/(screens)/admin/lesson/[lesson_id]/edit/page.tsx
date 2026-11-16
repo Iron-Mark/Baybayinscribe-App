@@ -39,11 +39,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import remarkBaybayin from "@/app/lib/remark-baybayin";
-import type { LearningResource } from "@/types/type.lessons";
-import {
-  learningResource,
-  learningResourceModule,
-} from "@/db/schema/learning-resources";
+import type { LearningResource, LessonDetails } from "@/types/type.lessons";
 
 type LessonEditorContextType = {
   lessonId?: string;
@@ -116,13 +112,7 @@ const CreateLesson = () => {
   const [openLessonInfoEditor, setOpenLessonInfoEditor] = useState(false);
   const [openAddModuleDialog, setOpenAddModuleDialog] = useState(false);
   const [openEditModuleDialog, setOpenEditModuleDialog] = useState(false);
-  const [lessonResourceDetails, setResourceDetails] = useState<
-    | {
-        learning_resource: LearningResource;
-        learning_resource_module: LearningResourceModule;
-      }
-    | undefined
-  >(undefined);
+  const [lessonResourceDetails, setResourceDetails] = useState<LessonDetails | undefined>(undefined);
   const [modules, setModules] = useState<ModuleWithFile[]>([]);
   const [currentModuleIndex, setCurrentModuleIndex] = useState<number>(0);
   const [currentModule, setCurrentModule] = useState<ModuleWithFile | null>(
@@ -152,17 +142,11 @@ const CreateLesson = () => {
       if (params.lesson_id == "new") return;
       const lessonId = params.lesson_id as string;
       const lesson = await lessonStore.getLesson(lessonId);
-      if (!lesson || (Array.isArray(lesson) && lesson.length === 0)) {
+      if (!lesson) {
         toast.error("Lesson not found");
         return;
       }
-      const lessonObj = Array.isArray(lesson) ? lesson[0] : lesson;
-      setResourceDetails(
-        lessonObj as {
-          learning_resource: LearningResource;
-          learning_resource_module: LearningResourceModule;
-        }
-      );
+      setResourceDetails(lesson);
       await moduleStore.getModules(lessonId);
     };
     loadLearningResourceInformation();

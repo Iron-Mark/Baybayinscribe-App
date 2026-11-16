@@ -1,4 +1,3 @@
-import fs from 'fs';
 import 'dotenv/config';
 import { defineConfig } from 'drizzle-kit';
 

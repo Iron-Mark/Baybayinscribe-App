@@ -8,6 +8,28 @@ import { InferenceResult } from "@/types/type.inference";
 import "@tensorflow/tfjs-backend-webgl"
 import { InferenceEngine, CVImage } from "inferencejs";
 
+interface WorkerPrediction {
+  color: string;
+  bbox: { x: number; y: number; width: number; height: number };
+  class: string;
+  confidence: number;
+}
+
+function isWorkerPredictions(value: unknown): value is WorkerPrediction[] {
+  return Array.isArray(value) && value.every((item: unknown) => {
+    if (typeof item !== "object" || item === null ||
+        !("color" in item) || typeof item.color !== "string" ||
+        !("class" in item) || typeof item.class !== "string" ||
+        !("confidence" in item) || typeof item.confidence !== "number" ||
+        !Number.isFinite(item.confidence) || !("bbox" in item) ||
+        typeof item.bbox !== "object" || item.bbox === null) return false;
+    const bbox = item.bbox;
+    return ["x", "y", "width", "height"].every((key) =>
+      key in bbox && typeof Reflect.get(bbox, key) === "number" && Number.isFinite(Reflect.get(bbox, key))
+    );
+  });
+}
+
 export enum InferenceStatus {
   IDLE,
   LOADING,
@@ -71,18 +93,16 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
     }
 
     set({ isInferring: true });
+    let input: tf.Tensor | undefined;
+    let output: tf.Tensor | tf.Tensor[] | undefined;
 
     try {
       // Ensure TensorFlow is ready
-      if (!tf.ready()) {
-        await tf.ready();
-      }
+      await tf.ready();
 
       const [modelWidth, modelHeight] = state.localModel.inputs[0].shape.slice(1, 3);
       console.log("Model input dimensions:", modelWidth, modelHeight);
 
-      let input: tf.Tensor;
-      
       if (isSketch) {
         // For sketches, handle canvas preprocessing
         const ctx = canvas.getContext('2d');
@@ -129,8 +149,9 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
       console.log("Input tensor shape:", input.shape);
       
       // Execute model
-      const result = await state.localModel.executeAsync(input) as tf.Tensor | tf.Tensor[];
-      const resultTensor = Array.isArray(result) ? result[0] : result;
+      output = await state.localModel.executeAsync(input);
+      const resultTensor = Array.isArray(output) ? output[0] : output;
+      if (!resultTensor) throw new Error("Model returned no output tensor");
       
       console.log("Raw model output shape:", resultTensor.shape);
       
@@ -139,10 +160,15 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
         const shape = resultTensor.shape;
         const result = Array.from(data);
         // Reshape the flat array based on the tensor shape
-        const reshaped = [];
+        const reshaped: number[][][] = [];
         const batchSize = shape[0];
         const numDetections = shape[1];
         const numClasses = shape[2];
+        if (shape.length !== 3 || batchSize === undefined || batchSize < 1 ||
+            numDetections === undefined || numClasses === undefined || numClasses < 6 ||
+            result.length !== batchSize * numDetections * numClasses) {
+          throw new Error("Expected model output shaped [batch, detections, at least 6 values]");
+        }
         
         for (let b = 0; b < batchSize; b++) {
           const batch = [];
@@ -156,16 +182,8 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
           }
           reshaped.push(batch);
         }
-        return reshaped as number[][][];
+        return reshaped;
       });
-      
-      // Dispose tensors immediately after use
-      input.dispose();
-      if (Array.isArray(result)) {
-        result.forEach(tensor => tensor.dispose());
-      } else {
-        result.dispose();
-      }
       
       console.log("Raw inference result:", inferenceData[0]);
       
@@ -205,6 +223,9 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
       console.error("Inference error:", err);
       set({ status: InferenceStatus.ERROR });
     } finally {
+      input?.dispose();
+      if (Array.isArray(output)) output.forEach((tensor) => tensor.dispose());
+      else output?.dispose();
       set({ isInferring: false });
     }
   },
@@ -228,8 +249,8 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
       
       set({ status: InferenceStatus.LOADING });
      
-      console.log("Loading model from:", "../../models/model.json");
-      const model = await tf.loadGraphModel("../../models/model.json");
+      console.log("Loading model from:", "/models/model.json");
+      const model = await tf.loadGraphModel("/models/model.json");
       console.log("Model loaded successfully");
       console.log("Model input shape:", model.inputs[0].shape);
       console.log("Model output shape:", model.outputs[0].shape);
@@ -281,24 +302,25 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
 
     const modelWorkerId = await inferEngine.startWorker(
       "baybayinscribe",
-      "2",
+      2,
       "rf_PMVs0s2FKsdITA4ivOJljFQAzrF3"
     );
     set({ status: InferenceStatus.READY, modelWorkerId, inferEngine });
   },
   infer: async (image) => {
-    const { inferEngine } = get();
-    if (inferEngine === undefined) {
+    const { inferEngine, modelWorkerId } = get();
+    if (inferEngine === undefined || modelWorkerId === undefined) {
       return;
     }
     set({ status: InferenceStatus.LOADING });
-    const result = await inferEngine.infer(image);
+    const result = await inferEngine.infer(modelWorkerId, new CVImage(image));
     console.log(result);
     set({ status: InferenceStatus.READY });
   },
   detect: (video, canvas) => {
     const detectFrame = async () => {
-      if (!get().modelWorkerId) {
+      const modelWorkerId = get().modelWorkerId;
+      if (!modelWorkerId) {
         setTimeout(detectFrame, 100 / 3);
         return;
       }
@@ -307,13 +329,9 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
       const inferEngine = get().inferEngine;
       if (inferEngine) {
         inferEngine
-          .infer(get().modelWorkerId, img)
-          .then((predictions: Array<{ 
-            color: string; 
-            bbox: { x: number; y: number; width: number; height: number }; 
-            class: string; 
-            confidence: number; 
-          }>) => {
+          .infer(modelWorkerId, img)
+          .then((predictions) => {
+            if (!isWorkerPredictions(predictions)) throw new Error("Invalid object-detection response");
             const ctx = canvas.getContext("2d");
             if (!ctx) return;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -349,7 +367,8 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
                 y - 10
               );
             }
-          });
+          })
+          .catch((error: unknown) => console.error("Worker inference failed:", error));
       }
       setTimeout(detectFrame, 100 / 3);
     };
@@ -380,7 +399,7 @@ export const useInferenceStore = create<InferenceState>()((set, get) => ({
       const scaleY = canvas.height / 640;
 
       // Draw individual detections
-      inferenceResult.forEach((item, index) => {
+      inferenceResult.forEach((item) => {
         const x = item.x * scaleX;
         const y = item.y * scaleY;
         const width = item.width * scaleX;

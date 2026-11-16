@@ -41,12 +41,11 @@ const validationSchema = z.object({
     .min(1, { message: "Please select the correct answer." }),
 });
 
-// eslint-disable-next-line react/display-name
 export const MultipleChoice = forwardRef(
-  (
+  function MultipleChoiceComponent(
     { onSubmit, onSelectionUpdate, existingEntries }: MultipleChoiceProps,
     ref
-  ) => {
+  ) {
     const [question, setQuestion] = useState<string>(""); // new state for question
     const [options, setOptions] = useState<string[]>(
       Array.from({ length: 1 }).map(() => "")
@@ -70,7 +69,7 @@ export const MultipleChoice = forwardRef(
         setOptions(existingEntries.options);
         // Use the correct_answer property from existing entries
         const correctValue = existingEntries.correct_answer;
-        const idx = existingEntries.options.findIndex((v, i) => {
+        const idx = existingEntries.options.findIndex((_, i) => {
           return i.toString() === correctValue;
         })
         setcorrect_answer(idx !== -1 ? idx.toString() : "");
@@ -84,7 +83,7 @@ export const MultipleChoice = forwardRef(
       if (isMounted.current) {
         onSelectionUpdate?.({ question, options, correct_answer: correct_answer });
       }
-    }, [question, options, correct_answer]);
+    }, [question, options, correct_answer, onSelectionUpdate]);
 
     const addOption = () => {
       setOptions([...options, ""]);

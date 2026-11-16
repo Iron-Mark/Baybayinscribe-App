@@ -1,16 +1,17 @@
-"use server";
-
 import db from "@/db/drizzle";
 import { learningResourceProgress } from "@/db/schema/learning-resources";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireApiAccess } from "@/lib/auth/api-access";
 
 export async function POST(
   request: Request,
-  params: { params: { user_id: string } }
+  params: { params: Promise<{ user_id: string }> }
 ) {
   try {
     const { user_id } = await params.params;
+    const access = await requireApiAccess(request, { userId: user_id });
+    if (access.response) return access.response;
     console.log("Clearing progress for user:", user_id);
     await db
       .delete(learningResourceProgress)

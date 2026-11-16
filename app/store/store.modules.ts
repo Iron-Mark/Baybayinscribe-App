@@ -1,10 +1,11 @@
 import axios from "@/lib/axios";
 import { Status } from "@/types/type.loading";
 import { create } from "zustand";
-import { LearningResourceModule } from "@/types/type.lessons";
+import { LearningModuleDetails, LearningResourceModule } from "@/types/type.lessons";
+import { isSampleContent, SAMPLE_LESSON_ID, sampleModule, sampleFile } from '@/lib/showcase-content';
 
 interface ModuleState {
-  module?: LearningResourceModule | null;
+  module?: LearningModuleDetails | null;
   modules?: LearningResourceModule[];
   error?: string;
   status?: Status;
@@ -41,14 +42,18 @@ export const useModuleStore = create<ModuleState>((set) => ({
   error: undefined,
   status: undefined,
   getModule: async (resourceId, moduleId) => {
+    if (isSampleContent(resourceId)) {
+      const sample = resourceId === SAMPLE_LESSON_ID && moduleId === sampleFile.id ? { ...sampleModule, file: [sampleFile] } : null;
+      set({ module: sample, status: sample ? 'Loaded' : 'Error', error: sample ? undefined : 'Sample module not found.' });
+      return;
+    }
     try {
       set({ status: "Loading" });
-      const res = await axios.get(`lessons/${resourceId}/module/${moduleId}`);
-      const data = res.data;
-      console.log("Module data:", data);
+      const res = await axios.get<LearningModuleDetails[]>(`lessons/${resourceId}/module/${moduleId}`);
+      const data = res.data[0] ?? null;
       set({ module: data, error: undefined, status: "Loaded" });
     } catch (e: unknown) {
-      set({ error: (e as Error).message, status: "Error" });
+      set({ module: null, error: (e as Error).message, status: "Error" });
     }
   },
   createModule: async ({

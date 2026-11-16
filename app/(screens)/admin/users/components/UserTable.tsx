@@ -187,12 +187,7 @@ function LearningProgressSection({ user }: { user: User }) {
   const { getLastLessonProgress } = useLearningResourceStore();
 
   useEffect(() => {
-    if (user?.id) {
-      fetchUserProgress();
-    }
-  }, [user?.id]);
-
-  const fetchUserProgress = async () => {
+    const fetchUserProgress = async () => {
     if (!user?.id) return;
 
     setLoading(true);
@@ -214,9 +209,9 @@ function LearningProgressSection({ user }: { user: User }) {
 
       // Update lesson data
       if (lastLessonData) {
-        setLastLesson(lastLessonData.title || "N/A");
+        setLastLesson(lastLessonData.lessonTitle || "N/A");
         setLastCompletedLesson(
-          lastLessonData.lesson_number?.toString() || "N/A"
+          lastLessonData.progress === "100" ? lastLessonData.moduleName || "N/A" : "N/A"
         );
       }
     } catch (error) {
@@ -225,7 +220,9 @@ function LearningProgressSection({ user }: { user: User }) {
     } finally {
       setLoading(false);
     }
-  };
+    };
+    void fetchUserProgress();
+  }, [user.id, getQuizScoreAverage, getLastLessonProgress]);
 
   const ProgressSkeleton = () => (
     <div className="flex flex-row justify-between gap-8 mb-4">

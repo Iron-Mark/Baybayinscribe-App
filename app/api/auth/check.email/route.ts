@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
+import { requireApiAccess } from '@/lib/auth/api-access';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
 export async function GET(request: NextRequest) {
+  const access = await requireApiAccess(request, { admin: true });
+  if (access.response) return access.response;
   const searchParams = request.nextUrl.searchParams;
   const email = searchParams.get('email');
 
@@ -15,14 +18,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const userResult = await pool.query(
-      `SELECT * FROM "user" WHERE email = $1`,
+      `SELECT 1 FROM "user" WHERE email = $1 LIMIT 1`,
       [email.toLowerCase()]
     );
 
     return NextResponse.json({ exists: userResult.rows.length > 0 });
   } catch (error) {
     console.error('Error checking email:', error);
-    // For security, always return success even on error
-    return NextResponse.json({ exists: false });
+    return NextResponse.json({ error: 'Database operation failed' }, { status: 503 });
   }
-} 
+}

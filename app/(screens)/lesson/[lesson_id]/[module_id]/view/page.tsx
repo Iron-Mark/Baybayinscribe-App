@@ -21,6 +21,7 @@ export default function ViewModule() {
     module_id: string;
   }>();
   const moduleStore = useModuleStore();
+  const getModule = useModuleStore((state) => state.getModule);
   const lessonContext = useLessonContext();
   const router = useRouter();
 
@@ -31,62 +32,68 @@ export default function ViewModule() {
     "You aren't supposed to see this"
   );
   const [showCongrats, setShowCongrats] = useState(false);
+  const [markdownError, setMarkdownError] = useState<string | null>(null);
 
   useEffect(() => {
     if (lesson_id && module_id) {
-      moduleStore.getModule(lesson_id, module_id);
+      getModule(lesson_id, module_id);
     }
-  }, [lesson_id, module_id]);
+  }, [lesson_id, module_id, getModule]);
 
   useEffect(() => {
-    if (
-      moduleStore.status === "Loaded" &&
-      moduleStore.module[0] &&
-      moduleStore.module[0].file
-    ) {
-      setLoadingMarkdown(true);
-      getMarkdownFromUrl(moduleStore.module[0].file[0].url);
+    if (moduleStore.status !== "Loaded") return;
+    const url = moduleStore.module?.file?.[0]?.url;
+    if (!url) {
+      setMarkdownError("Module content is unavailable.");
+      setLoadingMarkdown(false);
+      return;
     }
+    let cancelled = false;
+    setLoadingMarkdown(true);
+    setMarkdownError(null);
+    void axios.get<string>(url).then((response) => {
+      if (cancelled) return;
+      setMarkdown(response.data);
+      setLoadingMarkdown(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setMarkdownError("Unable to load module content. Please try again.");
+      setLoadingMarkdown(false);
+    });
+    return () => { cancelled = true; };
   }, [moduleStore.status, moduleStore.module]);
 
-  useEffect(() => {
-    console.log(lessonContext.lesson);
-  }, [lessonContext.lesson]);
-
-  useEffect(() => {
-    console.log(moduleStore.module);
-  }, [moduleStore.module]);
-
-  const getMarkdownFromUrl = async (url: string) => {
-    const response = await axios.get(url);
-    if (response.status !== 200) {
-      throw new Error("Network response was not ok");
-    }
-    const text = response.data;
-    setMarkdown(text);
-    setLoadingMarkdown(false);
-    return text;
-  };
-
   const markModuleAsComplete = async () => {
+    if (!moduleStore.module) return;
+    if (lessonContext.isGuest) {
+      lessonContext.completeGuestModule(moduleStore.module.id);
+      setShowCongrats(true);
+      return;
+    }
     const session = await authClient.getSession();
     if (!session || !session.data) {
       console.error("No session found");
       return;
     }
 
-    await moduleStore.markModuleFinished({
+    if (!moduleStore.module) return;
+
+    const completed = await moduleStore.markModuleFinished({
       lessonId: lesson_id,
-      moduleId: moduleStore.module[0].id,
+      moduleId: moduleStore.module.id,
       userId: session.data.user.id,
     });
 
-    setShowCongrats(true);
+    if (completed) setShowCongrats(true);
   };
+
+  if (moduleStore.status === "Error" || lessonContext.status === "Error" || markdownError) {
+    return <main className="p-8" role="alert">{markdownError || moduleStore.error || lessonContext.error || "Unable to load module."}</main>;
+  }
 
   // Show loading skeleton while markdown is loading, even after initial data load
   if (
-    lessonContext.status === "loading" ||
+    lessonContext.status === "Loading" ||
     moduleStore.status === "Loading" ||
     !lessonContext.lesson ||
     loadingMarkdown // <-- add this condition
@@ -128,7 +135,7 @@ export default function ViewModule() {
             size="lg"
             className="relative overflow-hidden"
           >
-            Complete Module
+            {lessonContext.isGuest ? 'Complete Module (guest)' : 'Complete Module'}
           </Button>
         </div>
         <Dialog open={showCongrats} onOpenChange={setShowCongrats}>
@@ -138,6 +145,7 @@ export default function ViewModule() {
             </DialogHeader>
             <div className="py-2">
               You have completed this module. Great job!
+              {lessonContext.isGuest && <p>Guest practice only — this is not saved to an account.</p>}
             </div>
             <DialogFooter>
               <Button onClick={() => setShowCongrats(false)}>

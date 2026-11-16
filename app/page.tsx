@@ -4,12 +4,6 @@ import { HomeMainContentScreen } from "@/components/home/Home.MainContent.Screen
 import { useLearningResourceStore } from "@/app/store/store.lr";
 import { Toaster } from "sonner";
 
-export function useHomeContext() {
-  return {
-    // Add any context values here if needed
-  };
-}
-
 export default function Home() {
   const lessonsStatus = useLearningResourceStore((state) => state.status);
   const getAllLessons = useLearningResourceStore(
@@ -20,8 +14,7 @@ export default function Home() {
     if (lessonsStatus !== "Loaded" && lessonsStatus !== "Loading") {
       getAllLessons();
     }
-    // eslint-disable-next-line
-  }, [lessonsStatus]);
+  }, [lessonsStatus, getAllLessons]);
 
   return (
     <>

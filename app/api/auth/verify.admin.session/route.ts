@@ -1,21 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "../../../lib/auth";
+import { requireApiAccess } from "@/lib/auth/api-access";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: req.headers
-    });
-
-    if (!session?.user) {
-      return NextResponse.json({ isAdmin: false }, { status: 401 });
-    }
+    const access = await requireApiAccess(req);
+    if (access.response) return access.response;
 
     return NextResponse.json({ 
-      isAdmin: session.user.role === "admin" 
+      isAdmin: access.session.user.role === "admin"
     });
   } catch (error) {
     console.error("Error verifying session:", error);
     return NextResponse.json({ isAdmin: false }, { status: 401 });
   }
-} 
+}

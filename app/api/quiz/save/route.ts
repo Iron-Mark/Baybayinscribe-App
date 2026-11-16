@@ -2,12 +2,21 @@ import { NextResponse } from "next/server";
 import db from "@/db/drizzle";
 import { QuizSchema, metadata, quiz_question } from "@/db/schema/quiz-schema";
 import { Quiz } from "@/types/type.quiz";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { requireApiAccess } from "@/lib/auth/api-access";
 
 async function saveQuizToDB(quiz: Quiz, created_by: string, id?: string) {
   const quizId = id ?? crypto.randomUUID();
 
   try {
+    // Validate all supplied IDs before any write; never move another quiz's question.
+    for (const question of quiz.questions) {
+      if (!question.id) continue;
+      const existing = await db.select().from(quiz_question).where(eq(quiz_question.id, question.id));
+      if (existing.some((row) => row.quiz_id !== quizId)) {
+        throw new Error("Question does not belong to this quiz");
+      }
+    }
     console.log("Saving quiz to DB:", quiz);
     console.log("Quiz ID:", quizId);
 
@@ -42,7 +51,7 @@ async function saveQuizToDB(quiz: Quiz, created_by: string, id?: string) {
       // Insert each quiz question (if any)
       if (quiz.questions && Array.isArray(quiz.questions)) {
         for (const q of quiz.questions) {
-          const questionInsertResult = await db.insert(quiz_question).values({
+          await db.insert(quiz_question).values({
             id: crypto.randomUUID(),
             quiz_id: quizId,
             question_number: q.question_number,
@@ -103,7 +112,7 @@ async function saveQuizToDB(quiz: Quiz, created_by: string, id?: string) {
                 created_at: q.created_at ? new Date(q.created_at) : new Date(),
                 updated_at: new Date(),
               })
-              .where(eq(quiz_question.id, q.id));
+              .where(and(eq(quiz_question.id, q.id), eq(quiz_question.quiz_id, quizId)));
           } else {
             // new → insert
             await db.insert(quiz_question).values({
@@ -138,10 +147,12 @@ async function saveQuizToDB(quiz: Quiz, created_by: string, id?: string) {
 
 export async function POST(request: Request) {
   try {
+    const access = await requireApiAccess(request, { admin: true });
+    if (access.response) return access.response;
     const quiz: Quiz & { id?: string; created_by?: string } =
       await request.json();
 
-    if (!quiz || !quiz.metadata || !quiz.questions) {
+    if (!quiz || !quiz.metadata || !Array.isArray(quiz.questions)) {
       return NextResponse.json(
         { error: "Invalid quiz structure." },
         { status: 400 }
@@ -150,7 +161,7 @@ export async function POST(request: Request) {
 
     const savedQuiz = await saveQuizToDB(
       { metadata: quiz.metadata, questions: quiz.questions },
-      quiz.created_by || "system",
+      access.session.user.id,
       quiz.id
     );
 

@@ -47,7 +47,7 @@ export default function QuizCard({ quiz }: QuizCardProps) {
 
       <Button
         className="bg-blue-500"
-        onClick={() => router.push(`/quiz/view/${quiz.metadata.quiz_id}`)}
+        onClick={() => router.push(`/quiz/${quiz.metadata.quiz_id}/view`)}
       >
         Take Quiz
       </Button>

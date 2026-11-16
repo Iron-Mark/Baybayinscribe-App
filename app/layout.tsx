@@ -13,6 +13,7 @@ import { AppSidebar } from "../components/sidebar/app.sidebar";
 import { siteConfig } from "./metadata";
 import Background from "@/components/background";
 import { Dialog } from "@/components/ui/dialog";
+import GuestNotice from "@/components/GuestNotice";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -60,6 +61,7 @@ export default function RootLayout({
               <div className="flex flex-1 overflow-hidden">
                 <AppSidebar className="sticky top-0 h-screen z-20" />
                 <main className="flex-1 overflow-auto z-0 h-full bg-blue-900">
+                  <GuestNotice />
                   {children}
                   <Background />
                 </main>

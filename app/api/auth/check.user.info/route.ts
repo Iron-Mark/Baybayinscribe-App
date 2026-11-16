@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "../../../lib/auth";
+import { requireApiAccess } from "@/lib/auth/api-access";
 import { Pool } from "pg";
 
 const pool = new Pool({
@@ -11,17 +11,12 @@ const pool = new Pool({
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: req.headers
-    });
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ status: "unauthenticated" }, { status: 401 });
-    }
+    const access = await requireApiAccess(req);
+    if (access.response) return access.response;
 
     const result = await pool.query(
       `SELECT * FROM "user_information" WHERE user_id = $1`,
-      [session.user.id]
+      [access.session.user.id]
     );
 
     if (result.rows.length === 0) {
@@ -40,4 +35,4 @@ export async function GET(req: NextRequest) {
     console.error("Error checking user info:", error);
     return NextResponse.json({ status: "error" }, { status: 500 });
   }
-} 
+}

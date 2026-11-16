@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, memo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { unstable_batchedUpdates } from "react-dom";
 import { QuizFormHeader } from "./components/QuizEditHeader";
 import { MultipleChoice } from "./components/QuizMultipleChoice";
@@ -24,7 +24,6 @@ import {
   List,
   PenTool,
   FileText,
-  Sparkles,
   Save,
   Trash,
   ChevronLeft,
@@ -41,19 +40,35 @@ import { toast } from "sonner";
 
 type FieldType = "multipleChoice" | "sketch" | "quiz";
 
-type Field = { id: string; type: FieldType; data: any };
+type FieldData = Omit<Partial<QuizQuestion>, "options"> & {
+  options?: string[];
+  correctAnswer?: string;
+  answer?: string;
+  baybayinCharacter?: string;
+};
+type Field = { id: string; type: FieldType; data: FieldData };
+
+const questionData = (question: QuizQuestion): FieldData => ({
+  ...question,
+  options: Array.isArray(question.options)
+    ? question.options.filter((option): option is string => typeof option === "string")
+    : [],
+});
 
 // Define prop types for MemoizedField
 interface MemoizedFieldProps {
   field: Field;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateFieldData: (id: string, newData: any) => void;
+  updateFieldData: (id: string, newData: FieldData) => void;
   removeField: (id: string) => void;
 }
 
 // Memoize the field rendering to prevent unnecessary re-renders
 const MemoizedField = memo(
-  ({ field, updateFieldData, removeField }: MemoizedFieldProps) => {
+  function MemoizedFieldComponent({ field, updateFieldData, removeField }: MemoizedFieldProps) {
+    const onUpdate = useCallback(
+      (data: FieldData) => updateFieldData(field.id, data),
+      [field.id, updateFieldData]
+    );
     return (
       <div key={field.id} className="p-4 rounded-lg  relative">
         <button
@@ -64,20 +79,20 @@ const MemoizedField = memo(
         </button>
         {field.type === "multipleChoice" && (
           <MultipleChoice
-            existingEntries={field.data}
-            onSelectionUpdate={(data) => updateFieldData(field.id, data)}
+            existingEntries={{ ...field.data, question: field.data.question || "", options: field.data.options || [], correct_answer: field.data.correct_answer || "", type: field.type }}
+            onSelectionUpdate={onUpdate}
           />
         )}
         {field.type === "sketch" && (
           <SketchInputs
-            existingEntries={field.data}
-            onChange={(data) => updateFieldData(field.id, data)}
+            existingEntries={{ options: field.data.options || [], description: field.data.description || "", character: field.data.character || "" }}
+            onChange={onUpdate}
           />
         )}
         {field.type === "quiz" && (
           <QuizInput
-            existingEntries={field.data}
-            onChange={(data) => updateFieldData(field.id, data)}
+            existingEntries={{ question: field.data.question || "", display_text: field.data.display_text || "", correct_answer: field.data.correct_answer || "", type: field.type }}
+            onChange={onUpdate}
           />
         )}
       </div>
@@ -88,7 +103,7 @@ const MemoizedField = memo(
 const EditQuizScreenInner = () => {
   const params = useParams();
   const router = useRouter();
-  const [currentSession, setCurrentSession] = useState<any>();
+  const [currentSession, setCurrentSession] = useState<typeof authClient.$Infer.Session | null>(null);
   const [fields, setFields] = useState<Field[]>([]);
   const { setQuizQuestions, quizInformation, setQuizInformation, quizStore } =
     useQuizContext();
@@ -103,16 +118,28 @@ const EditQuizScreenInner = () => {
   ); // new state for error action
   const [isPublic, setIsPublic] = useState(false); // new state for public toggle
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const loadQuiz = quizStore?.loadQuiz;
+  const clearQuiz = quizStore?.clearQuiz;
+  const existingHeaderData = useMemo(() => {
+    const metadata = quizStore?.quiz?.metadata;
+    if (!metadata) return undefined;
+    return {
+      title: metadata.quiz_name,
+      quizTopic: metadata.category,
+      description: metadata.description || "",
+      timer: metadata.time_limit.toString(),
+      difficulty: metadata.difficulty as QuizDifficulty,
+    };
+  }, [quizStore?.quiz?.metadata]);
 
   useEffect(() => {
-    if (params.quiz_id != "new") {
-      loadExistingQuiz();
-    } 
+    const quizId = Array.isArray(params.quiz_id) ? params.quiz_id[0] : params.quiz_id;
+    if (quizId && quizId !== "new") loadQuiz?.(quizId);
 
     return () => {
-      quizStore?.clearQuiz();
+      clearQuiz?.();
     }
-  }, []);
+  }, [params.quiz_id, loadQuiz, clearQuiz]);
 
   useEffect(() => {
     const loadSession = async () => {
@@ -180,7 +207,7 @@ const EditQuizScreenInner = () => {
       })
     );
     console.log("Quiz Questions", fields);
-  }, [fields, setQuizQuestions]);
+  }, [fields, setQuizQuestions, quizInformation?.quiz_id]);
 
   useEffect(() => {
     if (params.quiz_id === "new") {
@@ -199,9 +226,9 @@ const EditQuizScreenInner = () => {
     if (quizStore?.quiz) {
       const quiz = quizStore.quiz;
       // Only update fields if they are different
-      const newFields = quiz.questions
+      const newFields: Field[] = quiz.questions
         ? quiz.questions.map((question, index) => {
-            const data: any = { ...question, question_number: index + 1 };
+            const data: FieldData = { ...questionData(question), question_number: index + 1 };
             if (question.type === "MCQ" || question.type === "multipleChoice") {
               data.correctAnswer =
                 question.correct_answer || question.correct_answer || "";
@@ -212,7 +239,7 @@ const EditQuizScreenInner = () => {
             }
             if (
               (question.type === "SKT" || question.type === "sketch") &&
-              !data.options &&
+              !data.options?.length &&
               data.character
             ) {
               data.options = [data.character];
@@ -231,11 +258,7 @@ const EditQuizScreenInner = () => {
             };
           })
         : [];
-      const fieldsChanged =
-        JSON.stringify(fields) !== JSON.stringify(newFields);
-      if (fieldsChanged) {
-        setFields(newFields);
-      }
+      setFields((previous) => JSON.stringify(previous) === JSON.stringify(newFields) ? previous : newFields);
       console.log(quiz);      // Only update quizInformation if it is different
       const newQuizInfo = {
         quiz_id: Array.isArray(params.quiz_id) ? params.quiz_id[0] : params.quiz_id || "",
@@ -252,56 +275,23 @@ const EditQuizScreenInner = () => {
           ? new Date(quiz.metadata.updated_at)
           : new Date(),
       };
-      const quizInfoChanged =
-        JSON.stringify(quizInformation) !== JSON.stringify(newQuizInfo);
-      if (quizInfoChanged) {
-        setQuizInformation(newQuizInfo);
-      }
+      setQuizInformation((previous) => JSON.stringify(previous) === JSON.stringify(newQuizInfo) ? previous : newQuizInfo);
       setIsPublic(quiz.metadata.is_public || false);
     }
-  }, [quizStore?.quiz, quizStore?.error, params.quiz_id]);
-
-  const loadExistingQuiz = async () => {
-    const quizId = params.quiz_id as string;
-    if (quizId) {
-      quizStore?.loadQuiz(quizId);
-    }
-  };
+  }, [quizStore?.quiz, quizStore?.error, params.quiz_id, router, setQuizInformation]);
 
   const addField = (type: FieldType) => {
     setFields((prev) => [...prev, { id: crypto.randomUUID(), type, data: {} }]);
   };
 
-  const updateFieldData = (id: string, newData: any) => {
+  const updateFieldData = useCallback((id: string, newData: FieldData) => {
     unstable_batchedUpdates(() =>
       setFields((prev) =>
         prev.map((field) => {
           if (field.id !== id) return field;
 
-          // 1) normalize incoming payload (Event, primitive or object)
-          let dataPatch: any = {};
-          if (newData?.target?.value !== undefined) {
-            // native onChange event
-            dataPatch =
-              field.type === "sketch"
-                ? { description: newData.target.value }
-                : { question: newData.target.value };
-          } else if (Array.isArray(newData)) {
-            // array of options
-            dataPatch = { options: newData };
-          } else if (typeof newData === "object" && newData !== null) {
-            // full data object
-            dataPatch = newData;
-          } else {
-            // raw string/number
-            dataPatch =
-              field.type === "sketch"
-                ? { description: newData }
-                : { question: newData };
-          }
-
-          // 2) merge into existing data
-          const mergedData = { ...field.data, ...dataPatch };
+          // Every field editor emits a typed partial question object.
+          const mergedData = { ...field.data, ...newData };
 
           // 3) keep MCQ answer keys in sync
           if (field.type === "multipleChoice") {
@@ -323,11 +313,11 @@ const EditQuizScreenInner = () => {
         })
       )
     );
-  };
+  }, []);
 
-  const removeField = (id: string) => {
+  const removeField = useCallback((id: string) => {
     setFields((prev) => prev.filter((field) => field.id !== id));
-  };
+  }, []);
   const handleGenerateAI = async () => {
     const count = parseInt(aiCount, 10);
     if (isNaN(count) || count <= 0) {
@@ -360,7 +350,7 @@ const EditQuizScreenInner = () => {
       
       const aiFields = quizGenerationResult.questions.map((question) => {
         const fieldType: FieldType = question.type as FieldType;
-        const data: any = { ...question };
+        const data = questionData(question);
         if (fieldType === "multipleChoice") {
           data.correctAnswer = question.correct_answer || "";
         }
@@ -368,7 +358,7 @@ const EditQuizScreenInner = () => {
           data.correct_answer = question.correct_answer || "";
           data.answer = question.display_text || "";
         }
-        if (fieldType === "sketch" && !data.options && data.character) {
+        if (fieldType === "sketch" && !data.options?.length && data.character) {
           data.options = [data.character];
         }
         return {
@@ -481,7 +471,7 @@ const EditQuizScreenInner = () => {
 
     // Prepare questions
     const questions = fields.map((field, index) => {
-      let correct_answer = field.data.correct_answer;
+      let correct_answer = field.data.correct_answer || "";
       if (field.type === "multipleChoice") {
         correct_answer =
           field.data.correct_answer || field.data.correctAnswer || "";
@@ -526,8 +516,8 @@ const EditQuizScreenInner = () => {
     try {
       await quizStore?.saveQuiz(payload);
       router.push("/admin/quiz/" + quizId + "/edit");
-    } catch (err: any) {
-      setErrorMessage("Failed to save quiz: " + (err?.message || err));
+    } catch (err: unknown) {
+      setErrorMessage("Failed to save quiz: " + (err instanceof Error ? err.message : String(err)));
       setShowErrorDialog(true);
     }
   };
@@ -579,42 +569,7 @@ const EditQuizScreenInner = () => {
               {quizInformation && (
                 <QuizFormHeader
                   onSubmit={() => {}}
-                  existingData={{
-                    title:
-                      quizStore?.quiz?.metadata?.quiz_name ??
-                      quizInformation.quiz_name ??
-                      "",
-                    quizTopic:
-                      quizStore?.quiz?.metadata?.category ??
-                      quizInformation.category ??
-                      "",
-                    description:
-                      quizStore?.quiz?.metadata?.description ??
-                      quizInformation.description ??
-                      "",
-                    timer:
-                      (
-                        quizStore?.quiz?.metadata?.time_limit ??
-                        quizInformation.time_limit ??
-                        ""
-                      )?.toString() || "",
-                    difficulty: (quizStore?.quiz?.metadata?.difficulty ??
-                      quizInformation.difficulty ??
-                      "") as QuizDifficulty,
-                  }}
-                  onChange={(data) => {
-                    setQuizInformation((prev) => ({
-                      ...prev,
-                      quiz_name: data.title ?? prev.quiz_name,
-                      category: data.quizTopic ?? prev.category,
-                      description: data.description ?? prev.description,
-                      time_limit: data.timer
-                        ? parseInt(data.timer)
-                        : prev.time_limit,
-                      difficulty: (data.difficulty ??
-                        prev.difficulty) as QuizDifficulty,
-                    }));
-                  }}
+                  existingData={existingHeaderData}
                 />
               )}              {/* Updated FAB implementation */}
               <div className="p-10 fixed bottom-4 right-4 flex flex-col items-end">

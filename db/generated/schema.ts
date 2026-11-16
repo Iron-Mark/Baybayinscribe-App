@@ -1,5 +1,5 @@
-import { pgTable } from "drizzle-orm/pg-core"
-import { sql } from "drizzle-orm"
+// No introspected tables have been generated yet.
+export {};
 
 
 

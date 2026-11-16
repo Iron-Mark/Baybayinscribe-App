@@ -1,14 +1,6 @@
-"use server";
+import "server-only";
 
 import nodemailer from 'nodemailer';
-
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER, 
-    pass: process.env.GMAIL_APP_PASSWORD, 
-  },
-});
 
 type EmailOptions = {
   to: string;
@@ -18,30 +10,29 @@ type EmailOptions = {
 };
 
 export const sendEmail = async (options: EmailOptions) => {
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('------- EMAIL WOULD BE SENT -------');
-    console.log(`To: ${options.to}`);
-    console.log(`Subject: ${options.subject}`);
-    console.log(`Content: ${options.text}`);
-    console.log('-----------------------------------');
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+    throw new Error("Email delivery is not configured");
   }
-  
   try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+    });
     const info = await transporter.sendMail({
       from: process.env.GMAIL_USER, 
       to: options.to,
       subject: options.subject,
       text: options.text,
-      html: options.html || options.text,
+      ...(options.html ? { html: options.html } : {}),
     });
+    if (!Array.isArray(info.accepted) || info.accepted.length === 0) {
+      throw new Error("Email was not accepted");
+    }
     
     return { success: true, messageId: info.messageId };
-  } catch (error) {
-    console.error("Failed to send email:", error);
-    // Still return success in development to allow testing
-    if (process.env.NODE_ENV !== 'production') {
-      return { success: true, messageId: 'mock-id-' + Date.now() };
-    }
-    throw error;
+  } catch {
+    // Never log recipients, verification URLs/tokens or provider credential errors.
+    // Development must fail closed too; tests inject an isolated transport.
+    throw new Error("Email delivery failed");
   }
 };

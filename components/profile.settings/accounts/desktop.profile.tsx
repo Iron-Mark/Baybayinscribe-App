@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/app/lib/auth-client";
 import DesktopEditProfile from "./edit.profile/desktop.edit";
+import type { ProfileSaveStatus } from "@/lib/auth/profile-update";
 import {
   Dialog,
   DialogContent,
@@ -53,6 +54,7 @@ export default function ProfileModalDesktop({
   const [currentUserData, setCurrentUserData] = useState(userData);
   const [isDeleting, setIsDeleting] = useState(false);
   const [profilePicVersion, setProfilePicVersion] = useState(0);
+  const [profileNotice, setProfileNotice] = useState("");
 
   // Update currentUserData when userData prop changes
   useEffect(() => {
@@ -90,47 +92,11 @@ export default function ProfileModalDesktop({
   };
 
   // Handler for saving profile
-  const handleSaveProfile = async (updatedData: UserData) => {
-    try {
-      // Prepare the data to be sent to the server
-      const dataToUpdate = {
-        ...updatedData,
-        // Explicitly handle null profile picture URL
-        profilePictureUrl: updatedData.profilePictureUrl,
-      };
-
-      const response = await fetch("/api/user.information/update", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(dataToUpdate),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to update profile");
-      }
-
-      // Update the local state with new data received from the edit modal
-      // Ensure profilePictureUrl is correctly set to default if null
-      setCurrentUserData({
-        ...dataToUpdate,
-        profilePictureUrl:
-          dataToUpdate.profilePictureUrl === null
-            ? "/images/user.profile/user.avatar.webp"
-            : dataToUpdate.profilePictureUrl,
-        authProviders:
-          updatedData.authProviders || currentUserData.authProviders,
-      });
-
-      // Increment version to force Image component re-render
-      setProfilePicVersion((prevVersion) => prevVersion + 1);
-
-      setIsEditing(false);
-    } catch (error) {
-      console.error("Error updating profile:", error);
-      // Optionally handle displaying an error message in the profile view
-    }
+  const handleSaveProfile = (updatedData: UserData, status: ProfileSaveStatus = {}) => {
+    setCurrentUserData({ ...updatedData, authProviders: updatedData.authProviders || currentUserData.authProviders });
+    setProfilePicVersion((previous) => previous + 1);
+    setProfileNotice(status.message || "Profile saved.");
+    if (!status.keepEditing) setIsEditing(false);
   };
 
   const handleEditClick = () => {
@@ -319,6 +285,7 @@ export default function ProfileModalDesktop({
           </div>
 
           {/* User Profile */}
+          {profileNotice && <p role="status" className="mb-4 text-sm text-blue-200">{profileNotice}</p>}
           <div className="flex items-center mb-4">
             <div className="h-20 w-20 bg-gray-200 rounded-full flex items-center justify-center mr-4 overflow-hidden">
               {currentUserData.profilePictureUrl ? (

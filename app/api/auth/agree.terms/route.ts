@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "../../../lib/auth";
+import { requireApiAccess } from "@/lib/auth/api-access";
 import { Pool } from "pg";
 
 const pool = new Pool({
@@ -9,15 +9,9 @@ const pool = new Pool({
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: req.headers
-    });
-
-    const userId = session?.user?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireApiAccess(req);
+    if (access.response) return access.response;
+    const userId = access.session.user.id;
 
     const body = await req.json();
     const { agreed } = body;
@@ -44,4 +38,4 @@ export async function POST(req: NextRequest) {
     console.error("Error updating terms agreement:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
-} 
+}

@@ -3,11 +3,18 @@ import {
     learningResource,
     learningResourceModule
 } from "@/db/schema/learning-resources";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireApiAccess } from "@/lib/auth/api-access";
 
 export async function POST(request: Request) {
+  const access = await requireApiAccess(request);
+  if (access.response) return access.response;
   const { userId } = await request.json();
+
+  if (userId && userId !== access.session.user.id) {
+    return NextResponse.json({ error: "Cannot read another user's lessons" }, { status: 403 });
+  }
 
   if (!userId) {
     return NextResponse.json(
@@ -19,7 +26,9 @@ export async function POST(request: Request) {
   const userLessons = await db
     .select()
     .from(learningResource)
-    .where(eq(learningResource.created_by, userId));
+    .where(access.session.user.role === "admin"
+      ? eq(learningResource.created_by, access.session.user.id)
+      : and(eq(learningResource.created_by, access.session.user.id), eq(learningResource.is_visible, true)));
 
   // For each lesson, fetch its modules and attach under "modules"
   const lessonsWithModules = await Promise.all(

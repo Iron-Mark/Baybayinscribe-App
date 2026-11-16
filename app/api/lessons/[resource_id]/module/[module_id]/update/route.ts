@@ -1,15 +1,20 @@
-"use server";
-
 import { useModuleStore } from "@/app/store/server/server.store.modules";
 import { NextResponse } from "next/server";
+import { requireApiAccess } from "@/lib/auth/api-access";
+import { findLessonModule } from "@/lib/auth/lesson-access";
 
 // updating file
 export async function PUT(
   request: Request,
-  params: { params: { resource_id: string; module_id: string } }
+  params: { params: Promise<{ resource_id: string; module_id: string }> }
 ) {
   try {
+    const access = await requireApiAccess(request, { admin: true });
+    if (access.response) return access.response;
     const { resource_id, module_id } = await params.params;
+    if (!await findLessonModule(resource_id, module_id)) {
+      return NextResponse.json({ error: "Module not found" }, { status: 404 });
+    }
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const existingFileId = formData.get("existingFileId")?.toString();
@@ -40,10 +45,15 @@ export async function PUT(
 // updating module content
 export async function PATCH(
   request: Request,
-  params: { params: { resource_id: string; module_id: string } }
+  params: { params: Promise<{ resource_id: string; module_id: string }> }
 ) {
   try {
-    const { resource_id, module_id } = params.params;
+    const access = await requireApiAccess(request, { admin: true });
+    if (access.response) return access.response;
+    const { resource_id, module_id } = await params.params;
+    if (!await findLessonModule(resource_id, module_id)) {
+      return NextResponse.json({ error: "Module not found" }, { status: 404 });
+    }
     const formData = await request.formData();
     const title = formData.get("module_title")?.toString();
     const description = formData.get("module_description")?.toString();

@@ -1,12 +1,11 @@
 import axios from "@/lib/axios";
-import { LearningResource } from "@/types/type.lessons";
+import { LastLessonProgress, LearningResource, LessonDetails } from "@/types/type.lessons";
 import { Status } from "@/types/type.loading";
 import { create } from "zustand";
-import { mockLessons } from "@/constants/mock/mockLessons";
-import { user } from "@/db/schema/auth-schema";
+import { isSampleContent, SAMPLE_LESSON_ID, sampleLesson, sampleLessonDetail } from '@/lib/showcase-content';
 
 export type LearningResourceStore = {
-  lesson?: LearningResource;
+  lesson?: LessonDetails;
   lessons: LearningResource[] | undefined;
   error: string | undefined;
   status: Status;
@@ -20,16 +19,13 @@ export type LearningResourceStore = {
   getLesson: (
     lessonId: string,
     userId?: string
-  ) => Promise<
-    | (LearningResource & { file?: Record<string, unknown> })
-    | Record<string, unknown>[]
-  >;
+  ) => Promise<LessonDetails | undefined>;
   getMyLessons: (userId: string) => Promise<void>;
   getAllLessons: () => Promise<LearningResource[] | Record<string, unknown>[]>;
   updateLesson: (lesson: Partial<LearningResource>) => Promise<void>;
   deleteLesson: (lessonId: string) => Promise<void>;
   clearUserLessonProgress: (userId: string) => Promise<void>;
-  getLastLessonProgress: (userId: string) => Promise<LearningResource | null>;
+  getLastLessonProgress: (userId: string) => Promise<LastLessonProgress | null>;
 };
 
 export const useLearningResourceStore = create<LearningResourceStore>(
@@ -62,18 +58,24 @@ export const useLearningResourceStore = create<LearningResourceStore>(
       }
     },
     getLesson: async (lessonId, userId) => {
+      if (isSampleContent(lessonId)) {
+        const lesson = lessonId === SAMPLE_LESSON_ID ? sampleLessonDetail : undefined;
+        set({ lesson, status: lesson ? 'Loaded' : 'Error', error: lesson ? undefined : 'Sample lesson not found.' });
+        return lesson;
+      }
       set({ status: "Loading" });
       try {
-        const response = await axios.post(`/lessons/${lessonId}`, { userId });
-        console.log("Lesson data:", response.data);
+        const response = userId
+          ? await axios.post<LessonDetails>(`/lessons/${lessonId}`, { userId })
+          : await axios.get<LessonDetails>(`/lessons/${lessonId}`);
         if (!response.data) {
           set({ lesson: undefined, status: "Loaded" });
           return undefined;
         }
-        set({ lesson: response.data, status: "Loaded" });
+        set({ lesson: response.data, error: undefined, status: "Loaded" });
         return response.data;
       } catch (error: unknown) {
-        set({ error: (error as Error).message, status: "Error" });
+        set({ lesson: undefined, error: (error as Error).message, status: "Error" });
         return undefined;
       }
     },
@@ -127,18 +129,18 @@ export const useLearningResourceStore = create<LearningResourceStore>(
       try {
         const response = await axios.get("lessons/all");
         if (!response.data || response.data.length === 0) {
-          set({ lessons: mockLessons, status: "Loaded" });
-          return mockLessons;
+          set({ lessons: [sampleLesson], error: 'No live lessons available. Showing a labelled bundled sample.', status: "Loaded" });
+          return [sampleLesson];
         }
-        set({ lessons: response.data, status: "Loaded" });
+        set({ lessons: response.data, error: undefined, status: "Loaded" });
         return response.data;
       } catch {
         set({
-          lessons: mockLessons,
+          lessons: [sampleLesson],
           status: "Loaded",
-          error: "Using mock data due to API failure.",
+          error: "Live lessons are unavailable. Showing a labelled bundled sample, not original course data.",
         });
-        return mockLessons;
+        return [sampleLesson];
       }
     },
 
@@ -159,7 +161,7 @@ export const useLearningResourceStore = create<LearningResourceStore>(
 
     getLastLessonProgress: async (userId) => {
       try {
-        const response = await axios.get(`/lessons/progress/${userId}/last`);
+        const response = await axios.get<LastLessonProgress | null>(`/lessons/progress/${userId}/last`);
 
         if (response.status === 200) {
           return response.data;

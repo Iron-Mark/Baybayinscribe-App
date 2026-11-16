@@ -1,3 +1,3 @@
-import { relations } from "drizzle-orm/relations";
-import {  } from "./schema";
+// No introspected relations have been generated yet.
+export {};
 

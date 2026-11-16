@@ -35,7 +35,7 @@ export const createRegisterHandlers = ({
     // Validate the form data
     const validationResult = createRegistrationSchema().safeParse(values);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors;
+      const errors = validationResult.error.issues;
       const firstError = errors[0];
       setValidationError(firstError.message);
       setIsLoading(false);

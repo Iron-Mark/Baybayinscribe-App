@@ -40,7 +40,7 @@ function LessonContent() {
   const [navigating, setNavigating] = React.useState(false);
   const [isHeaderCollapsed, setIsHeaderCollapsed] = React.useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = React.useState(false);
-  const { lesson, status, error } = useLessonContext();
+  const { lesson, status, error, isGuest } = useLessonContext();
   const router = useRouter();
 
   // Handle scroll to collapse/expand header
@@ -256,28 +256,18 @@ function LessonContent() {
               <div className="text-muted-foreground text-center col-span-full py-12">
                 <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p className="text-lg font-medium mb-2">No modules yet</p>
-                <p className="text-sm">This lesson doesn't have any modules yet.</p>
+                <p className="text-sm">This lesson doesn&apos;t have any modules yet.</p>
               </div>
             )}
             {(() => {
               let firstUnfinishedFound = false;
               return modules.map(
-                (mod: {
-                  id: string;
-                  createdAt: Date;
-                  updatedAt: Date;
-                  module_name: string;
-                  module_description: string;
-                  learning_resource_id: string | null;
-                  module_id: string | null;
-                  file?: string;
-                  is_finished?: boolean;
-                }) => {
+                (mod) => {
                   if (!mod.module_id) {
                     // Skip modules without a valid module_id
                     return null;
                   }
-                  let canView = false;
+                  let canView = isGuest;
                   if (!mod.is_finished && !firstUnfinishedFound) {
                     canView = true;
                     firstUnfinishedFound = true;
@@ -338,9 +328,7 @@ function LessonContent() {
                                       File
                                     </Badge>
                                   </TooltipTrigger>                                  <TooltipContent>
-                                    {mod.file && typeof mod.file === 'object' && 'name' in mod.file 
-                                      ? (mod.file as any).name 
-                                      : 'File attached'}
+                                    {mod.file?.name || 'File attached'}
                                   </TooltipContent>
                                 </Tooltip>
                               )}

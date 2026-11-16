@@ -29,12 +29,14 @@ export function HomeMainContentScreen() {
   const [showSurvey, setShowSurvey] = useState(false);
   const lessonsStatus = useLearningResourceStore((state) => state.status);
   const lessons = useLearningResourceStore((state) => state.lessons);
+  const lessonError = useLearningResourceStore((state) => state.error);
   const getAllLessons = useLearningResourceStore(
     (state) => state.getAllLessons
   );
 
   const quizzesStatus = useQuizStore((state) => state.status);
   const quizzes = useQuizStore((state) => state.quizzes);
+  const quizError = useQuizStore((state) => state.error);
   const loadAllQuiz = useQuizStore((state) => state.loadAllQuiz);
 
   useEffect(() => {
@@ -56,6 +58,12 @@ export function HomeMainContentScreen() {
 
   return (
     <main className="min-h-screen max-w-8xl mx-auto pb-6 mt-6 sm:mt-0">
+      {(lessonError?.includes('bundled sample') || quizError?.includes('bundled sample')) && (
+        <p role="status" className="m-4 rounded-md bg-blue-50 p-4 text-blue-950">
+          Live content is unavailable or empty. Sample-labelled content is bundled for this showcase;
+          it is not the original course data and practice is not saved to an account.
+        </p>
+      )}
       {showSurvey && (
         <SurveyPopup isOpen={true} onClose={() => setShowSurvey(false)} />
       )}
@@ -77,7 +85,7 @@ export function HomeMainContentScreen() {
             />
           </article>
         )}
-        emptyMessage="No lessons yet"
+        emptyMessage={lessonError || "No lessons yet"}
       />
 
       <ContentSection<Quiz>
@@ -98,7 +106,7 @@ export function HomeMainContentScreen() {
             />
           </article>
         )}
-        emptyMessage="No quizzes yet"
+        emptyMessage={quizError || "No quizzes yet"}
         className="mb-6"
       />
     </main>

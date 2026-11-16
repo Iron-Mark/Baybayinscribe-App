@@ -8,11 +8,14 @@ import {
   quiz_question,
 } from "@/db/schema/quiz-schema";
 import { eq } from "drizzle-orm";
+import { requireApiAccess } from "@/lib/auth/api-access";
 
 export async function GET(
   request: Request,
-  { params }: { params: { quiz_id: string } }
+  { params }: { params: Promise<{ quiz_id: string }> }
 ) {
+  const access = await requireApiAccess(request, { allowGuest: true });
+  if (access.response) return access.response;
   const { quiz_id } = await params;
   // Query quiz by id
   const quizRecords = await db
@@ -25,12 +28,14 @@ export async function GET(
   }
   const quiz = quizRecords[0];
 
-  // Execute metadata and question queries concurrently
-  const [metadataRecords, questions] = await Promise.all([
-    db.select().from(metadata).where(eq(metadata.quiz_id, quiz_id)).limit(1),
-    db.select().from(quiz_question).where(eq(quiz_question.quiz_id, quiz_id)),
-  ]);
+  const metadataRecords = await db.select().from(metadata).where(eq(metadata.quiz_id, quiz_id)).limit(1);
   const meta = metadataRecords.length ? metadataRecords[0] : null;
+  if (!meta || (!meta.is_public && (!access.session ||
+      (access.session.user.role !== "admin" && quiz.created_by !== access.session.user.id)))) {
+    return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
+  }
+  // Gameplay currently uses question answers locally; private quizzes must not reach this query.
+  const questions = await db.select().from(quiz_question).where(eq(quiz_question.quiz_id, quiz_id));
 
   return NextResponse.json({
     quiz,

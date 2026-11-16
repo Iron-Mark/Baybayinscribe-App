@@ -5,6 +5,7 @@ import React, {
   useState,
   useEffect,
   useRef,
+  useCallback,
 } from "react";
 import { toast } from "sonner";
 import {
@@ -44,8 +45,8 @@ type QuizTakeContextType = {
   isModelReady: boolean;
   setProgress: React.Dispatch<React.SetStateAction<number>>;
   onSubmit: () => void;
-  subscribeToSubmit: (callback: () => void) => void;
-  onTimerEnd: (callback: () => void) => void;
+  subscribeToSubmit: (callback: () => void) => () => void;
+  onTimerEnd: (callback: () => void) => () => void;
   setHealth: React.Dispatch<React.SetStateAction<number>>;
   answerHistory: ModifiedQuizAnswerQuestion[];
   recordAnswer: (record: ModifiedQuizAnswerQuestion) => void;
@@ -81,52 +82,55 @@ export const QuizTakeProvider: React.FC<{
     Array<ModifiedQuizAnswerQuestion>
   >([]);
   const [isModelReady, setIsModelReady] = useState(false);
-  const quizStore = useQuizStore();
+  const loadedQuiz = useQuizStore((state) => state.quiz);
+  const quizStatus = useQuizStore((state) => state.status);
+  const loadQuiz = useQuizStore((state) => state.loadQuiz);
+  const initLocalModel = useInferenceStore((state) => state.initLocalModel);
+  const inferenceStatus = inference.status;
+  const inferenceResult = inference.localInferenceResult;
+  const clearResults = inference.clearResults;
 
   // Initialize quiz and model when component mounts
   useEffect(() => {
     const initializeQuizAndModel = async () => {
       // Load quiz first
-      await quizStore.loadQuiz(params.quiz_id);
+      await loadQuiz(params.quiz_id);
 
       // Initialize inference model immediately
-      if (inference.status === InferenceStatus.IDLE) {
-        console.log("Initializing inference model for quiz...");
-        inference.initLocalModel();
+      if (useInferenceStore.getState().status === InferenceStatus.IDLE) {
+        initLocalModel();
       }
     };
 
     initializeQuizAndModel();
-  }, [params.quiz_id]);
+  }, [params.quiz_id, loadQuiz, initLocalModel]);
 
   // Monitor inference model status
   useEffect(() => {
-    setIsModelReady(inference.status === InferenceStatus.READY);
+    setIsModelReady(inferenceStatus === InferenceStatus.READY);
 
-    if (inference.status === InferenceStatus.ERROR) {
+    if (inferenceStatus === InferenceStatus.ERROR) {
       toast.error(
         "Failed to load AI model. Sketch questions may not work properly."
       );
-    } else if (inference.status === InferenceStatus.READY) {
+    } else if (inferenceStatus === InferenceStatus.READY) {
       console.log("Inference model is ready!");
     }
-  }, [inference.status]);
+  }, [inferenceStatus]);
   useEffect(() => {
-    if (quizStore.status === "Loaded") {
-      const quiz = quizStore.quiz;
-      setQuiz(quiz as Quiz);
+    setQuiz(loadedQuiz);
+    setProgress(0);
+    setAnswerHistory([]);
+    if (loadedQuiz?.metadata.difficulty) {
+      setHealth(getHealthByDifficulty(loadedQuiz.metadata.difficulty));
+    }
+  }, [loadedQuiz]);
 
-      setCurrentQuestion(quiz?.questions[progress]);
-      
-      // Initialize health based on quiz difficulty
-      if (quiz?.metadata.difficulty) {
-        const initialHealth = getHealthByDifficulty(quiz.metadata.difficulty);
-        setHealth(initialHealth);
-      }
-    } else if (quizStore.status === "Error") {
+  useEffect(() => {
+    if (quizStatus === "Error") {
       toast.error("Failed to load quiz.");
     }
-  }, [quizStore.status]);
+  }, [quizStatus]);
 
   useEffect(() => {
     if (!quiz) return;
@@ -137,23 +141,23 @@ export const QuizTakeProvider: React.FC<{
       
       // Clear inference results if transitioning to non-sketch question
       const isSketchQuestion = curr.type === "sketch" || curr.type === "SKT";
-      if (!isSketchQuestion && inference.localInferenceResult) {
+      if (!isSketchQuestion && inferenceResult) {
         console.log("Clearing inference results for non-sketch question");
-        inference.clearResults();
+        clearResults();
       }
     } else {
       console.log("No more questions available.");
     }
-  }, [quiz, progress, inference]);
+  }, [quiz, progress, inferenceResult, clearResults]);
 
   const submitCallbacks = useRef<(() => void)[]>([]);
   const timerCallbacks = useRef<(() => void)[]>([]);
 
-  const onSubmit = () => {
+  const onSubmit = useCallback(() => {
     submitCallbacks.current.forEach((callback) => callback());
-  };
+  }, []);
 
-  const onTimerEnd = (callback: () => void) => {
+  const onTimerEnd = useCallback((callback: () => void) => {
     if (timerCallbacks.current.findIndex((cb) => cb === callback) === -1)
       timerCallbacks.current.push(callback);
     return () => {
@@ -161,9 +165,9 @@ export const QuizTakeProvider: React.FC<{
         (cb) => cb !== callback
       );
     };
-  };
+  }, []);
 
-  const subscribeToSubmit = (callback: () => void) => {
+  const subscribeToSubmit = useCallback((callback: () => void) => {
     if (submitCallbacks.current.findIndex((cb) => cb === callback) === -1)
       submitCallbacks.current.push(callback);
     return () => {
@@ -171,10 +175,10 @@ export const QuizTakeProvider: React.FC<{
         (cb) => cb !== callback
       );
     };
-  };
-  const recordAnswer = (record: ModifiedQuizAnswerQuestion) => {
+  }, []);
+  const recordAnswer = useCallback((record: ModifiedQuizAnswerQuestion) => {
     setAnswerHistory((prev) => [...prev, record]);
-  };
+  }, []);
   const getTimePerQuestionValue = () => {
     if (quiz?.metadata.time_limit) {
       return getTimePerQuestion(quiz.metadata.time_limit);
