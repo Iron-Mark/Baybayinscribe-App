@@ -33,13 +33,12 @@ function loadRoute(path: string, session: TestSession, picture?: string) {
     require: (specifier: string) => {
       if (specifier === "next/server") return { NextResponse: { json: Response.json } };
       if (specifier === "@/lib/auth/api-access") return loadApiAccess(session);
-      if (specifier === "pg") return { Pool: class {
-        async query(query: string, values: unknown[] = []) { effects.push({ query, values }); return { rows: [] }; }
-      } };
       if (specifier === "@vercel/blob") return {
         del: async () => { blobCalls++; }, put: async () => { blobCalls++; return { url: "https://example.invalid/mock" }; },
       };
-      if (specifier === "@/db/drizzle") return { __esModule: true, default: db };
+      if (specifier === "@/db/drizzle") return { __esModule: true, default: db, pool: {
+        async query(query: string, values: unknown[] = []) { effects.push({ query, values }); return { rows: [] }; }
+      } };
       if (specifier === "@/db/schema/auth-schema") return { userInformation: { userId: "userId", profilePictureUrl: "profilePictureUrl" } };
       if (specifier === "drizzle-orm") return { eq: () => undefined };
       throw new Error(`Unexpected dependency in profile test: ${specifier}`);

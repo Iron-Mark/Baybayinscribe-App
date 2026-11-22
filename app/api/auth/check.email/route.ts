@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Pool } from 'pg';
+import { pool } from '@/db/drizzle';
 import { requireApiAccess } from '@/lib/auth/api-access';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 export async function GET(request: NextRequest) {
   const access = await requireApiAccess(request, { admin: true });

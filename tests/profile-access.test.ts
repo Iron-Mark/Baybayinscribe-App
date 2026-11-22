@@ -21,7 +21,7 @@ function loadProfileRoute(session: Session) {
     require: (specifier: string) => {
       if (specifier === "next/server") return { NextResponse: { json: (body: unknown, options?: { status: number }) => ({ body, status: options?.status ?? 200 }) } };
       if (specifier === "@/lib/auth/api-access") return loadApiAccess(session);
-      if (specifier === "pg") return { Pool: class { async query(_sql: string, values: unknown[]) { queries += 1; queryValues = values; return { rows: [{ username: "synthetic" }] }; } } };
+      if (specifier === "@/db/drizzle") return { pool: { async query(_sql: string, values: unknown[]) { queries += 1; queryValues = values; return { rows: [{ username: "synthetic" }] }; } } };
       throw new Error(`Unexpected module in isolated route test: ${specifier}`);
     },
   });
