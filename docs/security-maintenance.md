@@ -62,6 +62,31 @@ the matching user ID or the admin role; database failures are not mock successes
 Local regression tests use mocked handlers and transport adapters for those
 access rules, reset requests, and lesson stores; no real accounts are exercised.
 
+## PostgreSQL transport
+
+Drizzle and the custom profile/auth routes share one PostgreSQL pool. Certificate
+and server-hostname verification is enabled by default in every environment.
+For a provider using a private CA, set `DATABASE_CA_CERT` to its trusted PEM CA
+certificate (literal newlines or escaped `\n` are accepted). The system CA trust
+store is used when this optional variable is absent. Do not disable verification
+to make an unavailable or self-signed database connect.
+
+`DATABASE_URL` may retain `sslmode=require`, `sslmode=verify-full`, `ssl=true`, or
+`ssl=1`; these redundant flags are removed before node-postgres parses the URL,
+so they cannot replace the verified SSL options or configured CA. Weaker modes,
+certificate-file URL parameters, and libpq compatibility overrides are rejected.
+Use `DATABASE_SSL_MODE=disable` only for a non-production, non-Vercel development
+database whose URL host is exactly localhost/127.0.0.1/::1, without a host override.
+TLS remains verified by default even on localhost.
+
+When `DATABASE_URL` is absent the pool remains inert during imports/builds, which
+keeps the sample-backed guest showcase usable. Promise and callback connections,
+queries, and Drizzle transactions fail before networking instead of falling back
+to `PGHOST`, `PGUSER`, or an implicit local database. Configuration is captured at
+startup; restart after changing database settings. This repair does not connect
+to a real database, establish a provider's CA, restore accounts, or apply schema
+migrations. The existing staging/provider release gates still apply.
+
 ## Route authorization policy
 
 Middleware is not an API security boundary. All custom data routes now use

@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiAccess } from "@/lib/auth/api-access";
-import { Pool } from "pg";
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+import { pool } from "@/db/drizzle";
 
 export async function POST(req: NextRequest) {
   try {
