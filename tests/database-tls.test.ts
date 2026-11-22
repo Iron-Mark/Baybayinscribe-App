@@ -3,10 +3,17 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { rootCertificates } from "node:tls";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
+import { transformSync } from "esbuild";
 import { Client, Pool, type PoolConfig } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
+import * as orm from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { DatabasePool, databasePoolOptions } from "../db/pool";
+import * as authSchema from "../db/schema/auth-schema";
+import * as fileSchema from "../db/schema/file-schema";
+import * as lessonSchema from "../db/schema/learning-resources";
+import * as quizSchema from "../db/schema/quiz-schema";
 
 const databaseUrl = "postgresql://synthetic:synthetic@database.example.invalid/app";
 
@@ -130,4 +137,90 @@ test("all runtime database routes share the verified pool rather than constructi
   });
   for (const file of visit("app/api")) assert.doesNotMatch(readFileSync(file, "utf8"), /new\s+Pool\s*\(|rejectUnauthorized\s*:\s*false/, file);
   assert.match(readFileSync("db/drizzle.ts", "utf8"), /drizzle\(\{ client: pool \}\)/);
+});
+
+test("guest content GET routes handle unconfigured DATABASE_URL without 500 error spam", async () => {
+  const pool = new DatabasePool({});
+  const unconfiguredDb = drizzle({ client: pool });
+  const errors: unknown[][] = [];
+  const next = { NextResponse: { json: (body: unknown, init?: ResponseInit) => Response.json(body, init) } };
+  const compile = <T>(file: string, deps: Record<string, unknown>): T => {
+    const mod = { exports: {} as T };
+    runInNewContext(transformSync(readFileSync(file, "utf8"), { loader: "ts", format: "cjs" }).code, {
+      module: mod,
+      exports: mod.exports,
+      Request,
+      Response,
+      Headers,
+      URL,
+      crypto,
+      console: { log() {}, error: (...args: unknown[]) => errors.push(args) },
+      require(specifier: string) {
+        if (specifier in deps) return deps[specifier];
+        throw new Error(`Unexpected import ${specifier} in ${file}`);
+      },
+    });
+    return mod.exports;
+  };
+  const access = {
+    requireApiAccess: async () => ({ session: null }),
+  };
+  const commonDeps: Record<string, unknown> = {
+    "next/server": next,
+    "drizzle-orm": orm,
+    "@/db/drizzle": unconfiguredDb,
+    "@/db/schema/learning-resources": lessonSchema,
+    "@/db/schema/quiz-schema": quizSchema,
+    "@/db/schema/file-schema": fileSchema,
+    "@/db/schema/auth-schema": authSchema,
+    "@/lib/auth/api-access": access,
+    "@/app/store/server/server.store.modules": { useModuleStore: { getState: () => { throw new Error("Store must not run"); } } },
+  };
+  commonDeps["@/lib/auth/lesson-access"] = compile("lib/auth/lesson-access.ts", commonDeps);
+
+  type Handler = (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
+  const req = () => new Request("https://app.invalid/api/guest", { method: "GET" });
+  const ctx = () => ({ params: Promise.resolve({ quiz_id: "sample", resource_id: "sample", module_id: "sample" }) });
+
+  try {
+    for (const file of ["app/api/lessons/all/route.ts", "app/api/quiz/all/route.ts"]) {
+      const route = compile<{ GET: Handler }>(file, commonDeps);
+      const res = await route.GET(req(), ctx());
+      assert.equal(res.status, 200, file);
+      assert.deepEqual(await res.json(), [], file);
+    }
+    for (const file of [
+      "app/api/quiz/get/[quiz_id]/route.ts",
+      "app/api/lessons/[resource_id]/route.ts",
+      "app/api/lessons/[resource_id]/modules/route.ts",
+      "app/api/lessons/[resource_id]/module/[module_id]/route.ts",
+    ]) {
+      const route = compile<{ GET: Handler }>(file, commonDeps);
+      const res = await route.GET(req(), ctx());
+      assert.equal(res.status, 404, file);
+    }
+    assert.equal(errors.length, 0, "unconfigured database must not emit console.error logs");
+
+    const failingDb = {
+      $count: () => 0,
+      select: () => {
+        const chain = {
+          from: () => chain,
+          leftJoin: () => chain,
+          where: () => chain,
+          orderBy: () => chain,
+          groupBy: () => Promise.reject(new Error("Connection reset")),
+          then: (_res: unknown, rej: (e: Error) => unknown) => Promise.reject(new Error("Connection reset")).then(_res as never, rej),
+        };
+        return chain;
+      },
+    };
+    for (const file of ["app/api/lessons/all/route.ts", "app/api/quiz/all/route.ts"]) {
+      const route = compile<{ GET: Handler }>(file, { ...commonDeps, "@/db/drizzle": failingDb });
+      const res = await route.GET(req(), ctx());
+      assert.equal(res.status, 500, `${file} should still return 500 for unexpected DB errors`);
+    }
+  } finally {
+    await pool.end();
+  }
 });

@@ -39,7 +39,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ reso
   return readLesson(resource_id, access.session?.user.id, access.session?.user.role);
 }
 
+function isDatabaseUnconfigured(error: unknown, depth = 0): boolean {
+  if (!error || typeof error !== "object" || depth > 4) return false;
+  const { message, cause } = error as { message?: unknown; cause?: unknown };
+  if (typeof message === "string" && message.includes("DATABASE_URL is required for database access.")) {
+    return true;
+  }
+  return isDatabaseUnconfigured(cause, depth + 1);
+}
+
 async function readLesson(resource_id: string, userId?: string, role?: string | null) {
+  try {
+    return await queryLesson(resource_id, userId, role);
+  } catch (error) {
+    if (isDatabaseUnconfigured(error)) return NextResponse.json({ message: "Lesson not found" }, { status: 404 });
+    return NextResponse.json({ message: "Failed to fetch lesson" }, { status: 500 });
+  }
+}
+
+async function queryLesson(resource_id: string, userId?: string, role?: string | null) {
 
   // Query the lesson with the joined modules and their files.
   const rows = await db
